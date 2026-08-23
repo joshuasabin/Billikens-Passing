@@ -659,9 +659,28 @@ function isStrugglingPasser(player){
 // ---------------------------------------------------------------
 // RENDER: ROSTER (Tab 1)
 // ---------------------------------------------------------------
+function sortedRosterForDisplay(team){
+  const players = state.teams[team].players.slice(); // copy — don't reorder the underlying data
+  if(team === 'home'){
+    // Billikens: alphabetical by initials
+    players.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  } else {
+    // Opponent: numeric by jersey number (non-numeric labels sort to the end)
+    players.sort((a, b) => {
+      const na = parseInt(a.label, 10);
+      const nb = parseInt(b.label, 10);
+      const va = isNaN(na) ? Infinity : na;
+      const vb = isNaN(nb) ? Infinity : nb;
+      if(va !== vb) return va - vb;
+      return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    });
+  }
+  return players;
+}
+
 function renderRoster(team){
   const container = document.getElementById(team === 'home' ? 'homeRoster' : 'awayRoster');
-  const players = state.teams[team].players;
+  const players = sortedRosterForDisplay(team);
   if(players.length === 0){
     container.innerHTML = `<div class="empty-note">No players added yet.</div>`;
     return;
