@@ -6,6 +6,16 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Billikens Passing Tracker</title>
+<script>
+  // Applied immediately (before CSS/paint) to avoid a flash of the wrong theme.
+  (function(){
+    try{
+      var saved = localStorage.getItem('billikens-passing-tracker-theme');
+      var theme = saved || ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');
+      if(theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    }catch(e){ /* storage unavailable — default light theme applies */ }
+  })();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
@@ -30,6 +40,41 @@
     --s3: #1E8E7E;
     --s4: #C9791E;
     --s5: #C23B6B;
+
+    /* semantic surface tokens (theme-aware) */
+    --heading: var(--navy);      /* text-only usage of brand blue */
+    --surface: #FFFFFF;          /* raised button/control surface */
+    --danger: #B7382B;
+    --row-bg: #F7F8FA;
+    --team-row-bg: #F3EFDD;
+    --total-cell-bg: #FFF6DD;
+    --warn-bg: #FDF1EC;
+    --caution-bg: #FFF6D8;
+    --caution-border: #B9860B;
+    --placeholder: #9AA3B0;
+
+    color-scheme: light;
+  }
+
+  [data-theme="dark"]{
+    --bg: #0B1220;
+    --card: #141B2E;
+    --line: #263049;
+    --ink: #EDEFF3;
+    --ink-soft: #98A2B8;
+
+    --heading: #6FA8FF;
+    --surface: #1E2740;
+    --danger: #E5695C;
+    --row-bg: #1B2338;
+    --team-row-bg: #2E2A18;
+    --total-cell-bg: #332C14;
+    --warn-bg: #3A1F1C;
+    --caution-bg: #362C10;
+    --caution-border: #E8B923;
+    --placeholder: #7C8699;
+
+    color-scheme: dark;
   }
 
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -53,6 +98,12 @@
   .brand{display:flex;align-items:baseline;gap:10px;}
   .brand .display{font-size:19px;letter-spacing:0.06em;}
   .brand .sub{color:var(--gold);font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;}
+  .header-right{display:flex;align-items:center;gap:10px;}
+  .theme-toggle{
+    width:38px;height:38px;border-radius:50%;border:2px solid var(--gold);background:transparent;
+    color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .theme-toggle:active{background:rgba(255,255,255,0.18);}
   .set-flip{
     background:var(--navy-deep);border:2px solid var(--gold);border-radius:8px;
     padding:6px 14px;text-align:center;min-width:88px;
@@ -88,13 +139,13 @@
     border:none;border-radius:9px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;
     letter-spacing:0.02em;
   }
-  #undoBtn{background:#fff;color:var(--navy);border:1.5px solid var(--navy);}
+  #undoBtn{background:var(--surface);color:var(--heading);border:1.5px solid var(--heading);}
   #undoBtn:active{background:var(--navy);color:#fff;}
   #undoBtn:disabled{opacity:0.35;}
-  #exportPdfBtn{background:var(--gold);color:var(--navy);margin-left:auto;}
+  #exportPdfBtn{background:var(--gold);color:var(--navy-deep);margin-left:auto;}
   #exportPdfBtn:active{background:var(--gold-deep);}
-  #resetBtn{background:transparent;color:#B7382B;border:1.5px solid #B7382B;}
-  #pdfFallbackLink{background:var(--gold);color:var(--navy);text-decoration:none;}
+  #resetBtn{background:transparent;color:var(--danger);border:1.5px solid var(--danger);}
+  #pdfFallbackLink{background:var(--gold);color:var(--navy-deep);text-decoration:none;}
 
   #lastActionToast{font-size:12px;color:var(--ink-soft);width:100%;order:5;min-height:16px;}
   #lastActionToast b{color:var(--ink);}
@@ -102,29 +153,56 @@
   /* ---------- Roster cards ---------- */
   .rosters{display:flex;flex-direction:column;gap:16px;}
   .roster-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;}
-  .roster-card h2{margin:0 0 10px;font-size:17px;color:var(--navy);}
+  .roster-card h2{margin:0 0 10px;font-size:17px;color:var(--heading);}
   .roster-card h2 input{
-    font-size:17px;font-weight:800;color:var(--navy);border:none;border-bottom:2px dashed var(--line);
+    font-size:17px;font-weight:800;color:var(--heading);border:none;border-bottom:2px dashed var(--line);
     padding:2px 0;width:220px;font-family:inherit;background:transparent;
   }
   .roster-card h2 input:focus{outline:none;border-bottom-color:var(--gold-deep);}
-  .roster-card h2 input::placeholder{color:#9AA3B0;font-weight:600;}
+  .roster-card h2 input::placeholder{color:var(--placeholder);font-weight:600;}
+
+  /* ---------- Timeout / sub tracker (Billikens only) ---------- */
+  .court-tracker-card{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:16px;
+  }
+  .court-tracker-title{margin:0 0 12px;font-size:17px;color:var(--heading);}
+  .court-tracker-row{display:flex;gap:10px;flex-wrap:wrap;}
+  .court-tracker{
+    flex:1;min-width:150px;background:var(--row-bg);border:1.5px solid var(--line);border-radius:10px;
+    padding:9px 12px;transition:background 0.15s, border-color 0.15s;
+  }
+  .court-tracker.at-limit{background:var(--warn-bg);border-color:var(--v0);}
+  .court-tracker.near-limit{background:var(--caution-bg);border-color:var(--caution-border);}
+  .ct-label{font-size:12px;font-weight:800;color:var(--heading);text-transform:uppercase;letter-spacing:0.04em;}
+  .ct-set-note{font-weight:600;color:var(--ink-soft);text-transform:none;letter-spacing:normal;font-size:11px;}
+  .ct-controls{display:flex;align-items:center;justify-content:space-between;margin-top:6px;}
+  .ct-btn{
+    width:34px;height:34px;border-radius:50%;border:1.5px solid var(--heading);background:var(--surface);color:var(--heading);
+    font-size:18px;font-weight:800;cursor:pointer;line-height:1;flex-shrink:0;
+  }
+  .ct-btn:active{background:var(--navy);color:#fff;}
+  .ct-btn:disabled{opacity:0.3;cursor:default;}
+  .ct-btn:disabled:active{background:var(--surface);color:var(--heading);}
+  .ct-count{font-size:17px;font-weight:800;color:var(--ink);}
+  .court-tracker.at-limit .ct-count{color:var(--v0);}
+  .court-tracker.near-limit .ct-count{color:var(--caution-border);}
 
   .add-player-form{display:flex;gap:8px;margin-bottom:12px;}
   .add-player-form input{
     flex:0 0 140px;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;
+    background:var(--card);color:var(--ink);
   }
   .add-player-form button{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:10px 14px;font-weight:700;font-size:13px;cursor:pointer;}
 
   .roster-list{display:flex;flex-direction:column;gap:8px;}
-  .empty-note{color:#9AA3B0;font-size:13px;padding:10px 2px;}
+  .empty-note{color:var(--placeholder);font-size:13px;padding:10px 2px;}
 
   .player-row{
-    display:flex;align-items:center;gap:8px;background:#F7F8FA;border:1px solid var(--line);
+    display:flex;align-items:center;gap:8px;background:var(--row-bg);border:1px solid var(--line);
     border-radius:10px;padding:8px 8px 8px 10px;
   }
   .player-row.struggling{
-    background:#FDF1EC;border-color:var(--v0);
+    background:var(--warn-bg);border-color:var(--v0);
   }
   .warn-triangle{
     font-size:18px;flex-shrink:0;line-height:1;cursor:help;
@@ -137,8 +215,8 @@
     .warn-triangle{animation:none;}
   }
   .player-tag{
-    font-weight:800;font-size:14px;color:var(--navy);min-width:38px;text-align:center;
-    background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 4px;flex-shrink:0;
+    font-weight:800;font-size:14px;color:var(--heading);min-width:38px;text-align:center;
+    background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 4px;flex-shrink:0;
   }
   .player-avg{min-width:64px;text-align:center;flex-shrink:0;}
   .player-avg .n{font-weight:800;font-size:15px;}
@@ -153,12 +231,12 @@
   .v0{background:var(--v0);} .v1{background:var(--v1);} .v2{background:var(--v2);} .v3{background:var(--v3);}
 
   .del-btn{
-    width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:#fff;color:#9AA3B0;
+    width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--placeholder);
     font-size:14px;line-height:1;cursor:pointer;flex-shrink:0;
   }
 
   /* ---------- Sub nav (tabs 2 & 3) ---------- */
-  .panel-title{color:var(--navy);font-size:20px;margin:4px 0 12px;}
+  .panel-title{color:var(--heading);font-size:20px;margin:4px 0 12px;}
   .subnav{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:5px;margin-bottom:14px;width:fit-content;}
   .subnav-btn{border:none;background:transparent;padding:9px 16px;border-radius:7px;font-weight:700;font-size:13px;color:var(--ink-soft);cursor:pointer;}
   .subnav-btn.active{background:var(--navy);color:#fff;}
@@ -170,26 +248,39 @@
   table.stats th, table.stats td{padding:10px 8px;text-align:center;border-bottom:1px solid var(--line);font-size:13px;}
   table.stats th{background:var(--navy);color:#fff;font-weight:700;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;}
   table.stats td:first-child, table.stats th:first-child{text-align:left;padding-left:14px;}
-  table.stats tr.team-row td{background:#F3EFDD;font-weight:800;}
-  table.stats tr.team-row td:first-child{color:var(--navy);}
+  table.stats tr.team-row td{background:var(--team-row-bg);font-weight:800;}
+  table.stats tr.team-row td:first-child{color:var(--heading);}
   table.stats td .avg{font-weight:800;font-size:15px;}
   table.stats td .meta{display:block;font-size:10px;color:var(--ink-soft);margin-top:1px;}
-  table.stats td.total-cell{background:#FFF6DD;}
+  table.stats td.total-cell{background:var(--total-cell-bg);}
   .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 
   /* ---------- Log page ---------- */
   .legend{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;color:var(--ink-soft);}
   .legend span{display:inline-flex;align-items:center;gap:5px;}
   .legend i{width:11px;height:11px;border-radius:3px;display:inline-block;}
+  .log-section-heading{
+    margin:18px 0 10px;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;
+    color:var(--heading);border-bottom:2px solid var(--line);padding-bottom:6px;
+  }
+  .log-section-heading:first-of-type{margin-top:0;}
+  .team-log-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:6px;}
+  .team-log-table th, .team-log-table td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:13px;}
+  .team-log-table th{background:var(--navy);color:#fff;font-weight:700;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;}
+  .team-log-table .tl-idx{color:var(--ink-soft);width:36px;font-variant-numeric:tabular-nums;}
+  .team-log-table .tl-player{font-weight:700;}
+  .set-tag{
+    color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;white-space:nowrap;
+  }
   .log-player{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;}
-  .log-player h3{margin:0 0 8px;font-size:14px;color:var(--navy);}
+  .log-player h3{margin:0 0 8px;font-size:14px;color:var(--heading);}
   .chip-row{display:flex;flex-wrap:wrap;gap:6px;}
   .chip{
     width:30px;height:30px;border-radius:7px;color:#fff;font-weight:800;font-size:13px;
     display:flex;align-items:center;justify-content:center;
   }
 
-  .empty-state{text-align:center;color:#9AA3B0;padding:40px 10px;font-size:14px;}
+  .empty-state{text-align:center;color:var(--placeholder);padding:40px 10px;font-size:14px;}
 
   @media (min-width:760px){
     .rosters{flex-direction:row;}
@@ -205,9 +296,12 @@
       <span class="display">Billikens</span>
       <span class="sub">Passing Tracker</span>
     </div>
-    <div class="set-flip">
-      <div class="lbl">Recording</div>
-      <div class="val tnum" id="headerSetVal">SET 1</div>
+    <div class="header-right">
+      <button id="themeToggleBtn" class="theme-toggle" onclick="toggleTheme()" title="Switch between dark and light mode" aria-label="Toggle dark and light mode">🌙</button>
+      <div class="set-flip">
+        <div class="lbl">Recording</div>
+        <div class="val tnum" id="headerSetVal">SET 1</div>
+      </div>
     </div>
   </div>
 </header>
@@ -250,6 +344,28 @@
         <div id="awayRoster" class="roster-list"></div>
       </div>
     </div>
+
+    <div class="court-tracker-card">
+      <h2 class="court-tracker-title">Billikens — Timeouts &amp; Subs <span class="ct-set-note">(this set)</span></h2>
+      <div class="court-tracker-row">
+        <div class="court-tracker" id="timeoutTracker">
+          <div class="ct-label">Timeouts</div>
+          <div class="ct-controls">
+            <button class="ct-btn" id="timeoutMinusBtn" onclick="changeCourtTally('timeouts', -1)">−</button>
+            <div class="ct-count tnum" id="timeoutCount">0 / 2</div>
+            <button class="ct-btn" id="timeoutPlusBtn" onclick="changeCourtTally('timeouts', 1)">+</button>
+          </div>
+        </div>
+        <div class="court-tracker" id="subTracker">
+          <div class="ct-label">Subs</div>
+          <div class="ct-controls">
+            <button class="ct-btn" id="subMinusBtn" onclick="changeCourtTally('subs', -1)">−</button>
+            <div class="ct-count tnum" id="subCount">0 / 15</div>
+            <button class="ct-btn" id="subPlusBtn" onclick="changeCourtTally('subs', 1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- TAB 2: SLU PASSING -->
@@ -280,10 +396,17 @@
 // ---------------------------------------------------------------
 // STATE
 // ---------------------------------------------------------------
+const TIMEOUT_LIMIT = 2;
+const SUB_LIMIT = 15;
+
+function freshCourtTally(){
+  return { 1:0, 2:0, 3:0, 4:0, 5:0 };
+}
+
 const state = {
   currentSet: 1,
   teams: {
-    home: { name: 'Billikens', players: [] },
+    home: { name: 'Billikens', players: [], timeouts: freshCourtTally(), subs: freshCourtTally() },
     away: { name: '', players: [] }
   },
   undoStack: [] // { team, playerId }
@@ -300,6 +423,7 @@ const SET_RGB = {
 };
 const SLU_BLUE_RGB = [0, 61, 165]; // official SLU Blue, PMS 293C
 const STORAGE_KEY = 'billikens-passing-tracker-state-v1';
+const THEME_KEY = 'billikens-passing-tracker-theme';
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
 
@@ -310,6 +434,29 @@ function findPlayer(team, id){
 function awayDisplayName(){
   const n = state.teams.away.name.trim();
   return n ? n : 'Opponent';
+}
+
+// ---------------------------------------------------------------
+// THEME (dark / light mode)
+// ---------------------------------------------------------------
+function currentTheme(){
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(theme){
+  if(theme === 'dark'){
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  const btn = document.getElementById('themeToggleBtn');
+  if(btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+function toggleTheme(){
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  try{ localStorage.setItem(THEME_KEY, next); }catch(e){ /* storage unavailable */ }
 }
 
 // ---------------------------------------------------------------
@@ -334,6 +481,9 @@ function loadState(){
       state.currentSet = saved.currentSet || 1;
       state.teams = saved.teams;
       state.undoStack = saved.undoStack || [];
+      // Backfill timeouts/subs for data saved before this feature existed
+      if(!state.teams.home.timeouts) state.teams.home.timeouts = freshCourtTally();
+      if(!state.teams.home.subs) state.teams.home.subs = freshCourtTally();
       return true;
     }
   }catch(e){
@@ -409,6 +559,7 @@ function setCurrentSet(n){
     b.classList.toggle('active', parseInt(b.dataset.set) === n);
   });
   document.getElementById('headerSetVal').textContent = 'SET ' + n;
+  renderCourtTracker();
   saveState();
 }
 
@@ -421,9 +572,9 @@ function updateAwayName(val){
 }
 
 function resetMatch(){
-  if(!confirm('Start a new match? This clears all players and recorded passes.')) return;
+  if(!confirm('Start a new match? This clears all players, passes, timeouts, and subs.')) return;
   state.currentSet = 1;
-  state.teams.home = { name:'Billikens', players: [] };
+  state.teams.home = { name:'Billikens', players: [], timeouts: freshCourtTally(), subs: freshCourtTally() };
   state.teams.away = { name:'', players: [] };
   state.undoStack = [];
   document.getElementById('awayTeamNameInput').value = '';
@@ -431,8 +582,46 @@ function resetMatch(){
   setCurrentSet(1);
   renderRoster('home'); renderRoster('away');
   renderStatsTables(); renderLogs(); updateUndoButton();
+  renderCourtTracker();
   document.getElementById('lastActionToast').innerHTML = '';
   saveState();
+}
+
+// ---------------------------------------------------------------
+// TIMEOUTS & SUBS (Billikens only, tracked per set)
+// ---------------------------------------------------------------
+function changeCourtTally(kind, delta){
+  const s = state.currentSet;
+  const limit = kind === 'timeouts' ? TIMEOUT_LIMIT : SUB_LIMIT;
+  const tally = state.teams.home[kind];
+  const next = (tally[s] || 0) + delta;
+  if(next < 0) return;
+  if(delta > 0 && next > limit) return;
+  tally[s] = next;
+  renderCourtTracker();
+  saveState();
+}
+
+function renderCourtTracker(){
+  const s = state.currentSet;
+  const timeouts = state.teams.home.timeouts[s] || 0;
+  const subs = state.teams.home.subs[s] || 0;
+
+  const toEl = document.getElementById('timeoutCount');
+  const subEl = document.getElementById('subCount');
+  if(!toEl || !subEl) return; // not rendered yet
+
+  toEl.textContent = `${timeouts} / ${TIMEOUT_LIMIT}`;
+  subEl.textContent = `${subs} / ${SUB_LIMIT}`;
+
+  document.getElementById('timeoutMinusBtn').disabled = timeouts <= 0;
+  document.getElementById('timeoutPlusBtn').disabled = timeouts >= TIMEOUT_LIMIT;
+  document.getElementById('subMinusBtn').disabled = subs <= 0;
+  document.getElementById('subPlusBtn').disabled = subs >= SUB_LIMIT;
+
+  document.getElementById('timeoutTracker').classList.toggle('at-limit', timeouts >= TIMEOUT_LIMIT);
+  document.getElementById('subTracker').classList.toggle('at-limit', subs >= SUB_LIMIT);
+  document.getElementById('subTracker').classList.toggle('near-limit', subs > 10 && subs < SUB_LIMIT);
 }
 
 // ---------------------------------------------------------------
@@ -560,6 +749,15 @@ function renderAvgTable(team, containerId){
 // ---------------------------------------------------------------
 // RENDER: LOG PAGES (Tab 2 / Tab 3, page 2)
 // ---------------------------------------------------------------
+function getAllPassesChronological(team){
+  const entries = [];
+  state.teams[team].players.forEach(p => {
+    p.passes.forEach(pass => entries.push({ player: p, pass }));
+  });
+  entries.sort((a,b) => a.pass.ts - b.pass.ts);
+  return entries;
+}
+
 function renderLogs(){
   renderLog('home', 'tab2-log');
   renderLog('away', 'tab3-log');
@@ -580,8 +778,28 @@ function renderLog(team, containerId){
   }
   html += `</div>`;
 
+  // Full team log — every attempt from every player, in the order it happened
+  html += `<h3 class="log-section-heading">Full Team Log</h3>`;
+  const entries = getAllPassesChronological(team);
+  if(entries.length === 0){
+    html += `<div class="empty-note" style="padding:0 0 14px;">No passes recorded yet.</div>`;
+  } else {
+    html += `<div class="table-wrap"><table class="team-log-table"><thead><tr><th>#</th><th>Player</th><th>Set</th><th>Value</th></tr></thead><tbody>`;
+    entries.forEach((e, i) => {
+      html += `<tr>
+        <td class="tl-idx">${i+1}</td>
+        <td class="tl-player">${escapeHtml(e.player.label)}</td>
+        <td><span class="set-tag" style="background:${SET_COLORS[e.pass.set]}">Set ${e.pass.set}</span></td>
+        <td><span class="chip" style="background:${SET_COLORS[e.pass.set]};display:inline-flex;">${e.pass.value}</span></td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  // Per-player breakdown
+  html += `<h3 class="log-section-heading">By Player</h3>`;
   players.forEach(p => {
-    html += `<div class="log-player"><h3>${escapeHtml(p.label)} <span style="color:#9AA3B0;font-weight:600;">(${p.passes.length} attempts)</span></h3>`;
+    html += `<div class="log-player"><h3>${escapeHtml(p.label)} <span style="color:var(--placeholder);font-weight:600;">(${p.passes.length} attempts)</span></h3>`;
     if(p.passes.length === 0){
       html += `<div class="empty-note" style="padding:0;">No passes recorded yet.</div>`;
     } else {
@@ -639,12 +857,28 @@ function exportPDF(){
   if(y > 660){ doc.addPage(); y = 50; }
   y = drawTeamSection(doc, 'away', awayDisplayName(), y);
 
-  // Page 2+: full attempt log for both teams
+  // Page 2+: full team log (chronological, all players merged) for both teams
   doc.addPage();
   y = 50;
   doc.setFont('helvetica','bold'); doc.setFontSize(16);
   doc.setTextColor(...SLU_BLUE_RGB);
-  doc.text('Attempt Logs', marginX, y);
+  doc.text('Full Team Log', marginX, y);
+  doc.setTextColor(20);
+  y += 16;
+  y = drawSetLegend(doc, marginX, y);
+  y += 14;
+
+  y = drawFullTeamLog(doc, 'home', 'Billikens', y);
+  y += 20;
+  if(y > 660){ doc.addPage(); y = 50; }
+  y = drawFullTeamLog(doc, 'away', awayDisplayName(), y);
+
+  // Page 3+: per-player attempt log breakdown for both teams
+  doc.addPage();
+  y = 50;
+  doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text('Attempt Logs by Player', marginX, y);
   doc.setTextColor(20);
   y += 16;
   y = drawSetLegend(doc, marginX, y);
@@ -657,6 +891,54 @@ function exportPDF(){
 
   const filename = 'billikens-passing-report-' + new Date().toISOString().slice(0,10) + '.pdf';
   openOrDownloadPdf(doc, filename);
+}
+
+function drawFullTeamLog(doc, team, title, y){
+  const marginX = 40;
+  const entries = getAllPassesChronological(team);
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text(title + ' Passing — Full Team Log', marginX, y);
+  doc.setTextColor(20);
+  y += 16;
+
+  if(entries.length === 0){
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('No passes recorded.', marginX, y);
+    return y + 14;
+  }
+
+  const colWidths = [26, 80, 55, 45];
+  const headers = ['#', 'Player', 'Set', 'Value'];
+
+  doc.setFontSize(9); doc.setFont('helvetica','bold');
+  let x = marginX;
+  headers.forEach((h,i) => { doc.text(h, x, y); x += colWidths[i]; });
+  y += 5;
+  doc.setDrawColor(180); doc.setLineWidth(0.7);
+  doc.line(marginX, y, x, y);
+  y += 13;
+
+  doc.setFont('helvetica','normal');
+  entries.forEach((e, i) => {
+    if(y > 760){ doc.addPage(); y = 50; }
+    let x = marginX;
+    doc.setFontSize(9); doc.setTextColor(20);
+    doc.text(String(i + 1), x, y); x += colWidths[0];
+    doc.text(e.player.label, x, y); x += colWidths[1];
+    doc.text('Set ' + e.pass.set, x, y); x += colWidths[2];
+
+    doc.setFillColor(...SET_RGB[e.pass.set]);
+    doc.roundedRect(x, y - 9, 17, 12, 2, 2, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(255,255,255);
+    doc.text(String(e.pass.value), x + 8.5, y - 1, { align: 'center' });
+    doc.setFont('helvetica','normal'); doc.setTextColor(20);
+
+    y += 14;
+  });
+
+  return y + 6;
 }
 
 function drawSetLegend(doc, marginX, y){
@@ -844,6 +1126,7 @@ function initSetPicker(){
 }
 
 const hadSavedData = loadState();
+applyTheme(currentTheme());
 initSetPicker();
 document.getElementById('awayTeamNameInput').value = state.teams.away.name;
 updateAwayName(state.teams.away.name);
@@ -852,6 +1135,7 @@ renderRoster('away');
 renderStatsTables();
 renderLogs();
 updateUndoButton();
+renderCourtTracker();
 if(hadSavedData){
   document.getElementById('lastActionToast').innerHTML = 'Restored your saved match data from this device.';
 }
