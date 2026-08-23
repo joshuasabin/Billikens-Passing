@@ -794,16 +794,19 @@ function renderLog(team, containerId){
     html += `</div>`;
   });
 
-  // Full team log — every attempt from every player, in the order it happened
+  // Full team log — every attempt from every player, most recent first
+  // (attempt #1 is the oldest, so it sits at the bottom of the stack)
   html += `<h3 class="log-section-heading">Full Team Log</h3>`;
   const entries = getAllPassesChronological(team);
   if(entries.length === 0){
     html += `<div class="empty-note" style="padding:0 0 14px;">No passes recorded yet.</div>`;
   } else {
+    entries.forEach((e, i) => { e.number = i + 1; }); // true attempt order, before reversing for display
+    const displayEntries = entries.slice().reverse();
     html += `<div class="table-wrap"><table class="team-log-table"><thead><tr><th>#</th><th>Player</th><th>Set</th><th>Value</th></tr></thead><tbody>`;
-    entries.forEach((e, i) => {
+    displayEntries.forEach(e => {
       html += `<tr>
-        <td class="tl-idx">${i+1}</td>
+        <td class="tl-idx">${e.number}</td>
         <td class="tl-player">${escapeHtml(e.player.label)}</td>
         <td><span class="set-tag" style="background:${SET_COLORS[e.pass.set]}">Set ${e.pass.set}</span></td>
         <td><span class="chip" style="background:${SET_COLORS[e.pass.set]};display:inline-flex;">${e.pass.value}</span></td>
@@ -895,7 +898,7 @@ function exportPDF(){
 
 function drawFullTeamLog(doc, team, title, y){
   const marginX = 40;
-  const entries = getAllPassesChronological(team);
+  const entries = getAllPassesChronological(team); // attempt #1 first — order preserved for the PDF
 
   doc.setFont('helvetica','bold'); doc.setFontSize(13);
   doc.setTextColor(...SLU_BLUE_RGB);
@@ -909,36 +912,67 @@ function drawFullTeamLog(doc, team, title, y){
     return y + 14;
   }
 
-  const colWidths = [26, 80, 55, 45];
-  const headers = ['#', 'Player', 'Set', 'Value'];
+  entries.forEach((e, i) => { e.number = i + 1; });
 
-  doc.setFontSize(9); doc.setFont('helvetica','bold');
-  let x = marginX;
-  headers.forEach((h,i) => { doc.text(h, x, y); x += colWidths[i]; });
-  y += 5;
-  doc.setDrawColor(180); doc.setLineWidth(0.7);
-  doc.line(marginX, y, x, y);
-  y += 13;
+  // Two side-by-side columns: left column holds the first half of attempts
+  // (starting at #1), right column continues where it left off.
+  const colWidth = 250;
+  const colGap = 32;
+  const leftX = marginX;
+  const rightX = marginX + colWidth + colGap;
+  const fieldWidths = [20, 78, 55, 40]; // #, Player, Set, Value
+  const rowHeight = 14;
+  const pageBottom = 758;
+  const topOfSection = y;
 
-  doc.setFont('helvetica','normal');
-  entries.forEach((e, i) => {
-    if(y > 760){ doc.addPage(); y = 50; }
-    let x = marginX;
-    doc.setFontSize(9); doc.setTextColor(20);
-    doc.text(String(i + 1), x, y); x += colWidths[0];
-    doc.text(e.player.label, x, y); x += colWidths[1];
-    doc.text('Set ' + e.pass.set, x, y); x += colWidths[2];
+  const half = Math.ceil(entries.length / 2);
+  const leftEntries = entries.slice(0, half);
+  const rightEntries = entries.slice(half);
 
-    doc.setFillColor(...SET_RGB[e.pass.set]);
-    doc.roundedRect(x, y - 9, 17, 12, 2, 2, 'F');
+  function drawColumnHeader(x, headerY){
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20);
+    let cx = x;
+    ['#','Player','Set','Value'].forEach((h,i) => { doc.text(h, cx, headerY); cx += fieldWidths[i]; });
+    doc.setDrawColor(180); doc.setLineWidth(0.7);
+    const totalW = fieldWidths.reduce((a,b) => a+b, 0);
+    doc.line(x, headerY + 4, x + totalW, headerY + 4);
+  }
+
+  function drawRow(entry, x, rowY){
+    let cx = x;
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(20);
+    doc.text(String(entry.number), cx, rowY); cx += fieldWidths[0];
+    doc.text(entry.player.label, cx, rowY); cx += fieldWidths[1];
+    doc.text('Set ' + entry.pass.set, cx, rowY); cx += fieldWidths[2];
+
+    doc.setFillColor(...SET_RGB[entry.pass.set]);
+    doc.roundedRect(cx, rowY - 9, 17, 12, 2, 2, 'F');
     doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(255,255,255);
-    doc.text(String(e.pass.value), x + 8.5, y - 1, { align: 'center' });
+    doc.text(String(entry.pass.value), cx + 8.5, rowY - 1, { align: 'center' });
     doc.setFont('helvetica','normal'); doc.setTextColor(20);
+  }
 
-    y += 14;
-  });
+  drawColumnHeader(leftX, topOfSection);
+  drawColumnHeader(rightX, topOfSection);
 
-  return y + 6;
+  let yLeft = topOfSection + 18;
+  let yRight = topOfSection + 18;
+  const maxRows = Math.max(leftEntries.length, rightEntries.length);
+
+  for(let i = 0; i < maxRows; i++){
+    if(yLeft > pageBottom || yRight > pageBottom){
+      doc.addPage();
+      const newHeaderY = 50;
+      drawColumnHeader(leftX, newHeaderY);
+      drawColumnHeader(rightX, newHeaderY);
+      yLeft = newHeaderY + 18;
+      yRight = newHeaderY + 18;
+    }
+    if(leftEntries[i]){ drawRow(leftEntries[i], leftX, yLeft); yLeft += rowHeight; }
+    if(rightEntries[i]){ drawRow(rightEntries[i], rightX, yRight); yRight += rowHeight; }
+  }
+
+  return Math.max(yLeft, yRight) + 6;
 }
 
 function drawSetLegend(doc, marginX, y){
