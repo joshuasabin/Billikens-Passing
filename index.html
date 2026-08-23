@@ -276,6 +276,7 @@ const state = {
 };
 
 const SET_COLORS = { 1:'var(--s1)', 2:'var(--s2)', 3:'var(--s3)', 4:'var(--s4)', 5:'var(--s5)' };
+const STORAGE_KEY = 'billikens-passing-tracker-state-v1';
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
 
@@ -286,6 +287,36 @@ function findPlayer(team, id){
 function awayDisplayName(){
   const n = state.teams.away.name.trim();
   return n ? n : 'Opponent';
+}
+
+// ---------------------------------------------------------------
+// PERSISTENCE (auto-save to this browser so a refresh doesn't lose data)
+// ---------------------------------------------------------------
+function saveState(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }catch(e){
+    // Storage unavailable (e.g. private browsing, or an embedded preview
+    // that blocks it) — the app still works, it just won't persist.
+    console.warn('Could not save match data:', e);
+  }
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return false;
+    const saved = JSON.parse(raw);
+    if(saved && saved.teams){
+      state.currentSet = saved.currentSet || 1;
+      state.teams = saved.teams;
+      state.undoStack = saved.undoStack || [];
+      return true;
+    }
+  }catch(e){
+    console.warn('Could not load saved match data:', e);
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------
@@ -301,6 +332,7 @@ function addPlayer(team){
   renderRoster(team);
   renderStatsTables();
   renderLogs();
+  saveState();
 }
 
 function removePlayer(team, id){
@@ -310,6 +342,7 @@ function removePlayer(team, id){
   renderStatsTables();
   renderLogs();
   updateUndoButton();
+  saveState();
 }
 
 function addPass(team, playerId, value){
@@ -323,6 +356,7 @@ function addPass(team, playerId, value){
   updateUndoButton();
   const t = document.getElementById('lastActionToast');
   t.innerHTML = `Last: <b>${player.label}</b> +${value} pt pass · Set ${state.currentSet}`;
+  saveState();
 }
 
 function undoLast(){
@@ -339,6 +373,7 @@ function undoLast(){
   if(removed){
     t.innerHTML = `Undid: <b>${player.label}</b> — ${removed.value} pt pass (Set ${removed.set})`;
   }
+  saveState();
 }
 
 function updateUndoButton(){
@@ -351,6 +386,7 @@ function setCurrentSet(n){
     b.classList.toggle('active', parseInt(b.dataset.set) === n);
   });
   document.getElementById('headerSetVal').textContent = 'SET ' + n;
+  saveState();
 }
 
 function updateAwayName(val){
@@ -358,6 +394,7 @@ function updateAwayName(val){
   document.getElementById('tab3NavLabel').textContent = awayDisplayName() + ' Passing';
   document.getElementById('tab3Title').textContent = state.teams.away.name.trim()
     ? awayDisplayName() + "'s Passing" : 'Opponent Passing';
+  saveState();
 }
 
 function resetMatch(){
@@ -372,6 +409,7 @@ function resetMatch(){
   renderRoster('home'); renderRoster('away');
   renderStatsTables(); renderLogs(); updateUndoButton();
   document.getElementById('lastActionToast').innerHTML = '';
+  saveState();
 }
 
 // ---------------------------------------------------------------
@@ -670,18 +708,25 @@ function initSetPicker(){
     const btn = document.createElement('button');
     btn.textContent = 'Set ' + s;
     btn.dataset.set = s;
-    if(s===1) btn.classList.add('active');
+    if(s === state.currentSet) btn.classList.add('active');
     btn.onclick = () => setCurrentSet(s);
     picker.appendChild(btn);
   }
+  document.getElementById('headerSetVal').textContent = 'SET ' + state.currentSet;
 }
 
+const hadSavedData = loadState();
 initSetPicker();
+document.getElementById('awayTeamNameInput').value = state.teams.away.name;
+updateAwayName(state.teams.away.name);
 renderRoster('home');
 renderRoster('away');
 renderStatsTables();
 renderLogs();
 updateUndoButton();
+if(hadSavedData){
+  document.getElementById('lastActionToast').innerHTML = 'Restored your saved match data from this device.';
+}
 </script>
 </body>
 </html>
