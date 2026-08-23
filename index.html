@@ -9,13 +9,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
-    --navy: #0B1F45;
-    --navy-light: #1E3B78;
-    --gold: #FFC72C;
+    --navy: #003DA5;      /* SLU Blue — PMS 293C, official primary */
+    --navy-light: #235FC4; /* lighter tint of SLU Blue for secondary chrome */
+    --navy-deep: #00244D;  /* Grand Blue — official SLU secondary, for depth */
+    --gold: #FFC72C;      /* Gateway Gold — official SLU secondary */
     --gold-deep: #E6AC00;
     --bg: #EEF0F3;
     --card: #FFFFFF;
-    --line: #D7DCE3;
+    --line: #C8C9C7;      /* College Church Gray — official SLU neutral */
     --ink: #101828;
     --ink-soft: #5B6472;
 
@@ -43,7 +44,7 @@
 
   /* ---------- Scoreboard header ---------- */
   header.scoreboard{
-    background:linear-gradient(180deg,var(--navy) 0%, #081733 100%);
+    background:linear-gradient(180deg,var(--navy) 0%, var(--navy-deep) 100%);
     color:#fff;padding:14px 18px 12px;
     border-bottom:4px solid var(--gold);
     position:sticky;top:0;z-index:20;
@@ -53,7 +54,7 @@
   .brand .display{font-size:19px;letter-spacing:0.06em;}
   .brand .sub{color:var(--gold);font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;}
   .set-flip{
-    background:#081733;border:2px solid var(--gold);border-radius:8px;
+    background:var(--navy-deep);border:2px solid var(--gold);border-radius:8px;
     padding:6px 14px;text-align:center;min-width:88px;
   }
   .set-flip .lbl{font-size:9px;letter-spacing:0.16em;color:var(--gold);font-weight:700;}
@@ -276,6 +277,15 @@ const state = {
 };
 
 const SET_COLORS = { 1:'var(--s1)', 2:'var(--s2)', 3:'var(--s3)', 4:'var(--s4)', 5:'var(--s5)' };
+// RGB equivalents of the SET_COLORS hexes above, for use in the PDF (jsPDF can't read CSS variables)
+const SET_RGB = {
+  1: [45, 95, 163],   // #2D5FA3
+  2: [122, 79, 190],  // #7A4FBE
+  3: [30, 142, 126],  // #1E8E7E
+  4: [201, 121, 30],  // #C9791E
+  5: [194, 59, 107]   // #C23B6B
+};
+const SLU_BLUE_RGB = [0, 61, 165]; // official SLU Blue, PMS 293C
 const STORAGE_KEY = 'billikens-passing-tracker-state-v1';
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
@@ -590,7 +600,9 @@ function exportPDF(){
   let y = 50;
 
   doc.setFont('helvetica','bold'); doc.setFontSize(18);
+  doc.setTextColor(...SLU_BLUE_RGB);
   doc.text('Billikens Passing Report', marginX, y);
+  doc.setTextColor(20);
   y += 18;
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90);
   doc.text(`Generated: ${new Date().toLocaleString()}`, marginX, y);
@@ -598,13 +610,44 @@ function exportPDF(){
   y += 22;
   doc.setTextColor(20);
 
+  // Page 1: match averages for both teams
   y = drawTeamSection(doc, 'home', 'Billikens', y);
   y += 26;
   if(y > 660){ doc.addPage(); y = 50; }
   y = drawTeamSection(doc, 'away', awayDisplayName(), y);
 
+  // Page 2+: full attempt log for both teams
+  doc.addPage();
+  y = 50;
+  doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text('Attempt Logs', marginX, y);
+  doc.setTextColor(20);
+  y += 16;
+  y = drawSetLegend(doc, marginX, y);
+  y += 14;
+
+  y = drawTeamLog(doc, 'home', 'Billikens', y);
+  y += 20;
+  if(y > 660){ doc.addPage(); y = 50; }
+  y = drawTeamLog(doc, 'away', awayDisplayName(), y);
+
   const filename = 'billikens-passing-report-' + new Date().toISOString().slice(0,10) + '.pdf';
   openOrDownloadPdf(doc, filename);
+}
+
+function drawSetLegend(doc, marginX, y){
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  let x = marginX;
+  for(let s=1; s<=5; s++){
+    doc.setFillColor(...SET_RGB[s]);
+    doc.roundedRect(x, y - 8, 9, 9, 1.5, 1.5, 'F');
+    doc.setTextColor(80);
+    doc.text('Set ' + s, x + 13, y);
+    x += 55;
+  }
+  doc.setTextColor(20);
+  return y;
 }
 
 function openOrDownloadPdf(doc, filename){
@@ -640,7 +683,9 @@ function drawTeamSection(doc, team, title, y){
   const setsUsed = getSetsWithData(team);
 
   doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(...SLU_BLUE_RGB);
   doc.text(title + ' Passing', marginX, y);
+  doc.setTextColor(20);
   y += 16;
 
   if(players.length === 0){
@@ -694,6 +739,66 @@ function drawTeamSection(doc, team, title, y){
   const teamTxt = teamAllAtt ? `${teamAvg.toFixed(2)} (${teamAllAtt}/${teamAllPts})` : '-';
   doc.text(teamTxt, xTeam, y);
   y += 14;
+
+  return y;
+}
+
+function drawTeamLog(doc, team, title, y){
+  const marginX = 40;
+  const pageRightEdge = 572; // letter width (612pt) minus right margin
+  const chip = 15;      // chip width/height
+  const chipGap = 4;    // gap between chips
+  const rowGap = 12;    // gap between a player's chip row and the next player
+  const players = state.teams[team].players;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text(title + ' Passing — Attempt Log', marginX, y);
+  doc.setTextColor(20);
+  y += 18;
+
+  if(players.length === 0){
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('No players recorded.', marginX, y);
+    return y + 14;
+  }
+
+  players.forEach(p => {
+    if(y > 730){ doc.addPage(); y = 50; }
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(20);
+    doc.text(`${p.label}`, marginX, y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110);
+    doc.text(`${p.passes.length} attempt${p.passes.length === 1 ? '' : 's'}`, marginX + 34, y);
+    doc.setTextColor(20);
+    y += 6;
+
+    if(p.passes.length === 0){
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(140);
+      doc.text('No passes recorded.', marginX, y + 12);
+      doc.setTextColor(20);
+      y += rowGap + 14;
+      return;
+    }
+
+    y += 14; // room for first chip row
+    let x = marginX;
+
+    p.passes.forEach(pass => {
+      if(x + chip > pageRightEdge){ x = marginX; y += chip + chipGap; }
+      if(y > 760){ doc.addPage(); y = 50; x = marginX; }
+
+      doc.setFillColor(...SET_RGB[pass.set]);
+      doc.roundedRect(x, y - chip, chip, chip, 2.5, 2.5, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
+      doc.text(String(pass.value), x + chip/2, y - chip/2 + 3, { align: 'center' });
+      doc.setTextColor(20);
+
+      x += chip + chipGap;
+    });
+
+    y += rowGap + 4;
+  });
 
   return y;
 }
