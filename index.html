@@ -123,6 +123,19 @@
     display:flex;align-items:center;gap:8px;background:#F7F8FA;border:1px solid var(--line);
     border-radius:10px;padding:8px 8px 8px 10px;
   }
+  .player-row.struggling{
+    background:#FDF1EC;border-color:var(--v0);
+  }
+  .warn-triangle{
+    font-size:18px;flex-shrink:0;line-height:1;cursor:help;
+    animation:warn-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes warn-pulse{
+    0%,100%{opacity:1;} 50%{opacity:0.45;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .warn-triangle{animation:none;}
+  }
   .player-tag{
     font-weight:800;font-size:14px;color:var(--navy);min-width:38px;text-align:center;
     background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 4px;flex-shrink:0;
@@ -446,6 +459,14 @@ function getSetsWithData(team){
 
 function fmtAvg(v){ return v===null || v===undefined ? '—' : v.toFixed(2); }
 
+function isStrugglingPasser(player){
+  // Flags a player if 3 or more of their last 4 passes were a 0 or a 1.
+  if(player.passes.length < 4) return false;
+  const last4 = player.passes.slice(-4);
+  const lowCount = last4.filter(p => p.value === 0 || p.value === 1).length;
+  return lowCount >= 3;
+}
+
 // ---------------------------------------------------------------
 // RENDER: ROSTER (Tab 1)
 // ---------------------------------------------------------------
@@ -458,9 +479,11 @@ function renderRoster(team){
   }
   container.innerHTML = players.map(p => {
     const stats = computeStats(p);
+    const struggling = isStrugglingPasser(p);
     return `
-      <div class="player-row">
+      <div class="player-row${struggling ? ' struggling' : ''}">
         <div class="player-tag">${escapeHtml(p.label)}</div>
+        ${struggling ? `<span class="warn-triangle" title="3+ of last 4 passes were 0 or 1">⚠️</span>` : ''}
         <div class="player-avg">
           <div class="n tnum">${fmtAvg(stats.total.avg)}</div>
           <div class="l">Avg</div>
