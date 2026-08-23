@@ -1,117 +1,1144 @@
-function drawTeamLog(doc, team, title, y){
-  const marginX = 40;
-  const leftX = 40;
-  const rightX = 310;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Billikens Passing Tracker</title>
+<script>
+  // Applied immediately (before CSS/paint) to avoid a flash of the wrong theme.
+  (function(){
+    try{
+      var saved = localStorage.getItem('billikens-passing-tracker-theme');
+      var theme = saved || ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');
+      if(theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    }catch(e){ /* storage unavailable — default light theme applies */ }
+  })();
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --navy: #003DA5;      /* SLU Blue — PMS 293C, official primary */
+    --navy-light: #235FC4; /* lighter tint of SLU Blue for secondary chrome */
+    --navy-deep: #00244D;  /* Grand Blue — official SLU secondary, for depth */
+    --gold: #FFC72C;      /* Gateway Gold — official SLU secondary */
+    --gold-deep: #E6AC00;
+    --bg: #EEF0F3;
+    --card: #FFFFFF;
+    --line: #C8C9C7;      /* College Church Gray — official SLU neutral */
+    --ink: #101828;
+    --ink-soft: #5B6472;
 
-  const columnWidth = 230;
+    --v0: #B7382B;
+    --v1: #DB8A2E;
+    --v2: #8FB33E;
+    --v3: #1F8F4E;
 
-  const chip = 15;
-  const chipGap = 4;
+    --s1: #2D5FA3;
+    --s2: #7A4FBE;
+    --s3: #1E8E7E;
+    --s4: #C9791E;
+    --s5: #C23B6B;
+
+    /* semantic surface tokens (theme-aware) */
+    --heading: var(--navy);      /* text-only usage of brand blue */
+    --surface: #FFFFFF;          /* raised button/control surface */
+    --danger: #B7382B;
+    --row-bg: #F7F8FA;
+    --team-row-bg: #F3EFDD;
+    --total-cell-bg: #FFF6DD;
+    --warn-bg: #FDF1EC;
+    --caution-bg: #FFF6D8;
+    --caution-border: #B9860B;
+    --placeholder: #9AA3B0;
+
+    color-scheme: light;
+  }
+
+  [data-theme="dark"]{
+    --bg: #0B1220;
+    --card: #141B2E;
+    --line: #263049;
+    --ink: #EDEFF3;
+    --ink-soft: #98A2B8;
+
+    --heading: #6FA8FF;
+    --surface: #1E2740;
+    --danger: #E5695C;
+    --row-bg: #1B2338;
+    --team-row-bg: #2E2A18;
+    --total-cell-bg: #332C14;
+    --warn-bg: #3A1F1C;
+    --caution-bg: #362C10;
+    --caution-border: #E8B923;
+    --placeholder: #7C8699;
+
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    -webkit-user-select:none;user-select:none;overscroll-behavior:none;}
+  input{-webkit-user-select:text;user-select:text;}
+
+  .display{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    font-weight:800;text-transform:uppercase;letter-spacing:0.04em;}
+  .tnum{font-variant-numeric:tabular-nums;}
+
+  /* ---------- Scoreboard header ---------- */
+  header.scoreboard{
+    background:linear-gradient(180deg,var(--navy) 0%, var(--navy-deep) 100%);
+    color:#fff;padding:14px 18px 12px;
+    border-bottom:4px solid var(--gold);
+    position:sticky;top:0;z-index:20;
+  }
+  .scoreboard-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:baseline;gap:10px;}
+  .brand .display{font-size:19px;letter-spacing:0.06em;}
+  .brand .sub{color:var(--gold);font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;}
+  .header-right{display:flex;align-items:center;gap:10px;}
+  .theme-toggle{
+    width:38px;height:38px;border-radius:50%;border:2px solid var(--gold);background:transparent;
+    color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  }
+  .theme-toggle:active{background:rgba(255,255,255,0.18);}
+  .set-flip{
+    background:var(--navy-deep);border:2px solid var(--gold);border-radius:8px;
+    padding:6px 14px;text-align:center;min-width:88px;
+  }
+  .set-flip .lbl{font-size:9px;letter-spacing:0.16em;color:var(--gold);font-weight:700;}
+  .set-flip .val{font-size:22px;font-weight:800;line-height:1.1;}
+
+  /* ---------- Tabs ---------- */
+  nav.tabs{display:flex;background:var(--navy-light);position:sticky;top:64px;z-index:19;
+    box-shadow:0 2px 6px rgba(0,0,0,0.15);}
+  nav.tabs button{
+    flex:1;border:none;background:transparent;color:rgba(255,255,255,0.65);
+    padding:13px 8px;font-weight:700;font-size:13px;letter-spacing:0.04em;text-transform:uppercase;
+    cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  nav.tabs button.active{color:#fff;border-bottom-color:var(--gold);background:rgba(255,255,255,0.06);}
+
+  main{max-width:1100px;margin:0 auto;padding:16px 14px 60px;}
+  .tabpanel{display:none;}
+  .tabpanel.active{display:block;}
+
+  /* ---------- Toolbar (Tab 1) ---------- */
+  .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:16px;}
+  .set-picker{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:5px;}
+  .set-picker button{
+    border:none;background:transparent;padding:9px 13px;border-radius:7px;font-weight:800;
+    color:var(--ink-soft);font-size:14px;cursor:pointer;min-width:44px;
+  }
+  .set-picker button.active{background:var(--navy);color:#fff;}
+  .set-picker button.active::after{content:none;}
+
+  button.pill{
+    border:none;border-radius:9px;padding:11px 16px;font-weight:700;font-size:13px;cursor:pointer;
+    letter-spacing:0.02em;
+  }
+  #undoBtn{background:var(--surface);color:var(--heading);border:1.5px solid var(--heading);}
+  #undoBtn:active{background:var(--navy);color:#fff;}
+  #undoBtn:disabled{opacity:0.35;}
+  #exportPdfBtn{background:var(--gold);color:var(--navy-deep);margin-left:auto;}
+  #exportPdfBtn:active{background:var(--gold-deep);}
+  #resetBtn{background:transparent;color:var(--danger);border:1.5px solid var(--danger);}
+  #pdfFallbackLink{background:var(--gold);color:var(--navy-deep);text-decoration:none;}
+
+  #lastActionToast{font-size:12px;color:var(--ink-soft);width:100%;order:5;min-height:16px;}
+  #lastActionToast b{color:var(--ink);}
+
+  /* ---------- Roster cards ---------- */
+  .rosters{display:flex;flex-direction:column;gap:16px;}
+  .roster-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .roster-card h2{margin:0 0 10px;font-size:17px;color:var(--heading);}
+  .roster-card h2 input{
+    font-size:17px;font-weight:800;color:var(--heading);border:none;border-bottom:2px dashed var(--line);
+    padding:2px 0;width:220px;font-family:inherit;background:transparent;
+  }
+  .roster-card h2 input:focus{outline:none;border-bottom-color:var(--gold-deep);}
+  .roster-card h2 input::placeholder{color:var(--placeholder);font-weight:600;}
+
+  /* ---------- Timeout / sub tracker (Billikens only) ---------- */
+  .court-tracker-card{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:16px;
+  }
+  .court-tracker-title{margin:0 0 12px;font-size:17px;color:var(--heading);}
+  .court-tracker-row{display:flex;gap:10px;flex-wrap:wrap;}
+  .court-tracker{
+    flex:1;min-width:150px;background:var(--row-bg);border:1.5px solid var(--line);border-radius:10px;
+    padding:9px 12px;transition:background 0.15s, border-color 0.15s;
+  }
+  .court-tracker.at-limit{background:var(--warn-bg);border-color:var(--v0);}
+  .court-tracker.near-limit{background:var(--caution-bg);border-color:var(--caution-border);}
+  .ct-label{font-size:12px;font-weight:800;color:var(--heading);text-transform:uppercase;letter-spacing:0.04em;}
+  .ct-set-note{font-weight:600;color:var(--ink-soft);text-transform:none;letter-spacing:normal;font-size:11px;}
+  .ct-controls{display:flex;align-items:center;justify-content:space-between;margin-top:6px;}
+  .ct-btn{
+    width:34px;height:34px;border-radius:50%;border:1.5px solid var(--heading);background:var(--surface);color:var(--heading);
+    font-size:18px;font-weight:800;cursor:pointer;line-height:1;flex-shrink:0;
+  }
+  .ct-btn:active{background:var(--navy);color:#fff;}
+  .ct-btn:disabled{opacity:0.3;cursor:default;}
+  .ct-btn:disabled:active{background:var(--surface);color:var(--heading);}
+  .ct-count{font-size:17px;font-weight:800;color:var(--ink);}
+  .court-tracker.at-limit .ct-count{color:var(--v0);}
+  .court-tracker.near-limit .ct-count{color:var(--caution-border);}
+
+  .add-player-form{display:flex;gap:8px;margin-bottom:12px;}
+  .add-player-form input{
+    flex:0 0 140px;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;
+    background:var(--card);color:var(--ink);
+  }
+  .add-player-form button{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:10px 14px;font-weight:700;font-size:13px;cursor:pointer;}
+
+  .roster-list{display:flex;flex-direction:column;gap:8px;}
+  .empty-note{color:var(--placeholder);font-size:13px;padding:10px 2px;}
+
+  .player-row{
+    display:flex;align-items:center;gap:8px;background:var(--row-bg);border:1px solid var(--line);
+    border-radius:10px;padding:8px 8px 8px 10px;
+  }
+  .player-row.struggling{
+    background:var(--warn-bg);border-color:var(--v0);
+  }
+  .warn-triangle{
+    font-size:18px;flex-shrink:0;line-height:1;cursor:help;
+    animation:warn-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes warn-pulse{
+    0%,100%{opacity:1;} 50%{opacity:0.45;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .warn-triangle{animation:none;}
+  }
+  .player-tag{
+    font-weight:800;font-size:14px;color:var(--heading);min-width:38px;text-align:center;
+    background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 4px;flex-shrink:0;
+  }
+  .player-avg{min-width:64px;text-align:center;flex-shrink:0;}
+  .player-avg .n{font-weight:800;font-size:15px;}
+  .player-avg .l{font-size:9px;color:var(--ink-soft);letter-spacing:0.06em;text-transform:uppercase;}
+
+  .pass-btns{display:flex;gap:6px;flex:1;justify-content:center;}
+  .pass-btns button{
+    width:44px;height:44px;border-radius:50%;border:none;color:#fff;font-weight:800;font-size:16px;
+    cursor:pointer;flex-shrink:0;
+  }
+  .pass-btns button:active{filter:brightness(0.85);transform:scale(0.94);}
+  .v0{background:var(--v0);} .v1{background:var(--v1);} .v2{background:var(--v2);} .v3{background:var(--v3);}
+
+  .del-btn{
+    width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--placeholder);
+    font-size:14px;line-height:1;cursor:pointer;flex-shrink:0;
+  }
+
+  /* ---------- Sub nav (tabs 2 & 3) ---------- */
+  .panel-title{color:var(--heading);font-size:20px;margin:4px 0 12px;}
+  .subnav{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:5px;margin-bottom:14px;width:fit-content;}
+  .subnav-btn{border:none;background:transparent;padding:9px 16px;border-radius:7px;font-weight:700;font-size:13px;color:var(--ink-soft);cursor:pointer;}
+  .subnav-btn.active{background:var(--navy);color:#fff;}
+  .subpage{display:none;}
+  .subpage.active{display:block;}
+
+  /* ---------- Averages table ---------- */
+  table.stats{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  table.stats th, table.stats td{padding:10px 8px;text-align:center;border-bottom:1px solid var(--line);font-size:13px;}
+  table.stats th{background:var(--navy);color:#fff;font-weight:700;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;}
+  table.stats td:first-child, table.stats th:first-child{text-align:left;padding-left:14px;}
+  table.stats tr.team-row td{background:var(--team-row-bg);font-weight:800;}
+  table.stats tr.team-row td:first-child{color:var(--heading);}
+  table.stats td .avg{font-weight:800;font-size:15px;}
+  table.stats td .meta{display:block;font-size:10px;color:var(--ink-soft);margin-top:1px;}
+  table.stats td.total-cell{background:var(--total-cell-bg);}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+  /* ---------- Log page ---------- */
+  .legend{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;font-size:12px;color:var(--ink-soft);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block;}
+  .log-section-heading{
+    margin:18px 0 10px;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;
+    color:var(--heading);border-bottom:2px solid var(--line);padding-bottom:6px;
+  }
+  .log-section-heading:first-of-type{margin-top:0;}
+  .team-log-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:6px;}
+  .team-log-table th, .team-log-table td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:13px;}
+  .team-log-table th{background:var(--navy);color:#fff;font-weight:700;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;}
+  .team-log-table .tl-idx{color:var(--ink-soft);width:36px;font-variant-numeric:tabular-nums;}
+  .team-log-table .tl-player{font-weight:700;}
+  .set-tag{
+    color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;white-space:nowrap;
+  }
+  .log-player{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;}
+  .log-player h3{margin:0 0 8px;font-size:14px;color:var(--heading);}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{
+    width:30px;height:30px;border-radius:7px;color:#fff;font-weight:800;font-size:13px;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  .empty-state{text-align:center;color:var(--placeholder);padding:40px 10px;font-size:14px;}
+
+  @media (min-width:760px){
+    .rosters{flex-direction:row;}
+    .roster-card{flex:1;}
+  }
+</style>
+</head>
+<body>
+
+<header class="scoreboard">
+  <div class="scoreboard-row">
+    <div class="brand">
+      <span class="display">Billikens</span>
+      <span class="sub">Passing Tracker</span>
+    </div>
+    <div class="header-right">
+      <button id="themeToggleBtn" class="theme-toggle" onclick="toggleTheme()" title="Switch between dark and light mode" aria-label="Toggle dark and light mode">🌙</button>
+      <div class="set-flip">
+        <div class="lbl">Recording</div>
+        <div class="val tnum" id="headerSetVal">SET 1</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button data-tab="tab1" class="active" onclick="switchTab('tab1')">Live Entry</button>
+  <button data-tab="tab2" onclick="switchTab('tab2')" id="tab2NavLabel">SLU Passing</button>
+  <button data-tab="tab3" onclick="switchTab('tab3')" id="tab3NavLabel">Opponent Passing</button>
+</nav>
+
+<main>
+
+  <!-- TAB 1: LIVE ENTRY -->
+  <section id="tab1" class="tabpanel active">
+    <div class="toolbar">
+      <div class="set-picker" id="setPicker"></div>
+      <button class="pill" id="undoBtn" onclick="undoLast()" disabled>↺ Undo Last Pass</button>
+      <button class="pill" id="exportPdfBtn" onclick="exportPDF()">⬇ Export PDF Summary</button>
+      <button class="pill" id="resetBtn" onclick="resetMatch()">New Match</button>
+      <a id="pdfFallbackLink" href="#" style="display:none;" class="pill" target="_blank" rel="noopener"></a>
+      <div id="lastActionToast"></div>
+    </div>
+
+    <div class="rosters">
+      <div class="roster-card" data-team="home">
+        <h2>Billikens</h2>
+        <div class="add-player-form">
+          <input id="homeNewPlayerInput" placeholder="Initials (e.g. JS)" maxlength="4">
+          <button onclick="addPlayer('home')">Add Player</button>
+        </div>
+        <div id="homeRoster" class="roster-list"></div>
+      </div>
+
+      <div class="roster-card" data-team="away">
+        <h2><input id="awayTeamNameInput" placeholder="Opponent team name" oninput="updateAwayName(this.value)"></h2>
+        <div class="add-player-form">
+          <input id="awayNewPlayerInput" placeholder="Jersey #" maxlength="3">
+          <button onclick="addPlayer('away')">Add Player</button>
+        </div>
+        <div id="awayRoster" class="roster-list"></div>
+      </div>
+    </div>
+
+    <div class="court-tracker-card">
+      <h2 class="court-tracker-title">Billikens — Timeouts &amp; Subs <span class="ct-set-note">(this set)</span></h2>
+      <div class="court-tracker-row">
+        <div class="court-tracker" id="timeoutTracker">
+          <div class="ct-label">Timeouts</div>
+          <div class="ct-controls">
+            <button class="ct-btn" id="timeoutMinusBtn" onclick="changeCourtTally('timeouts', -1)">−</button>
+            <div class="ct-count tnum" id="timeoutCount">0 / 2</div>
+            <button class="ct-btn" id="timeoutPlusBtn" onclick="changeCourtTally('timeouts', 1)">+</button>
+          </div>
+        </div>
+        <div class="court-tracker" id="subTracker">
+          <div class="ct-label">Subs</div>
+          <div class="ct-controls">
+            <button class="ct-btn" id="subMinusBtn" onclick="changeCourtTally('subs', -1)">−</button>
+            <div class="ct-count tnum" id="subCount">0 / 15</div>
+            <button class="ct-btn" id="subPlusBtn" onclick="changeCourtTally('subs', 1)">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 2: SLU PASSING -->
+  <section id="tab2" class="tabpanel">
+    <h1 class="panel-title display" style="font-size:20px;">SLU Passing</h1>
+    <div class="subnav">
+      <button class="subnav-btn active" onclick="switchPage('tab2','avg')">Match Averages</button>
+      <button class="subnav-btn" onclick="switchPage('tab2','log')">Attempt Log</button>
+    </div>
+    <div id="tab2-avg" class="subpage active"></div>
+    <div id="tab2-log" class="subpage"></div>
+  </section>
+
+  <!-- TAB 3: OPPONENT PASSING -->
+  <section id="tab3" class="tabpanel">
+    <h1 class="panel-title display" style="font-size:20px;" id="tab3Title">Opponent Passing</h1>
+    <div class="subnav">
+      <button class="subnav-btn active" onclick="switchPage('tab3','avg')">Match Averages</button>
+      <button class="subnav-btn" onclick="switchPage('tab3','log')">Attempt Log</button>
+    </div>
+    <div id="tab3-avg" class="subpage active"></div>
+    <div id="tab3-log" class="subpage"></div>
+  </section>
+
+</main>
+
+<script>
+// ---------------------------------------------------------------
+// STATE
+// ---------------------------------------------------------------
+const TIMEOUT_LIMIT = 2;
+const SUB_LIMIT = 15;
+
+function freshCourtTally(){
+  return { 1:0, 2:0, 3:0, 4:0, 5:0 };
+}
+
+const state = {
+  currentSet: 1,
+  teams: {
+    home: { name: 'Billikens', players: [], timeouts: freshCourtTally(), subs: freshCourtTally() },
+    away: { name: '', players: [] }
+  },
+  undoStack: [] // { team, playerId }
+};
+
+const SET_COLORS = { 1:'var(--s1)', 2:'var(--s2)', 3:'var(--s3)', 4:'var(--s4)', 5:'var(--s5)' };
+// RGB equivalents of the SET_COLORS hexes above, for use in the PDF (jsPDF can't read CSS variables)
+const SET_RGB = {
+  1: [45, 95, 163],   // #2D5FA3
+  2: [122, 79, 190],  // #7A4FBE
+  3: [30, 142, 126],  // #1E8E7E
+  4: [201, 121, 30],  // #C9791E
+  5: [194, 59, 107]   // #C23B6B
+};
+const SLU_BLUE_RGB = [0, 61, 165]; // official SLU Blue, PMS 293C
+const STORAGE_KEY = 'billikens-passing-tracker-state-v1';
+const THEME_KEY = 'billikens-passing-tracker-theme';
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+
+function findPlayer(team, id){
+  return state.teams[team].players.find(p => p.id === id);
+}
+
+function awayDisplayName(){
+  const n = state.teams.away.name.trim();
+  return n ? n : 'Opponent';
+}
+
+// ---------------------------------------------------------------
+// THEME (dark / light mode)
+// ---------------------------------------------------------------
+function currentTheme(){
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+
+function applyTheme(theme){
+  if(theme === 'dark'){
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  const btn = document.getElementById('themeToggleBtn');
+  if(btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+function toggleTheme(){
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  try{ localStorage.setItem(THEME_KEY, next); }catch(e){ /* storage unavailable */ }
+}
+
+// ---------------------------------------------------------------
+// PERSISTENCE (auto-save to this browser so a refresh doesn't lose data)
+// ---------------------------------------------------------------
+function saveState(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }catch(e){
+    // Storage unavailable (e.g. private browsing, or an embedded preview
+    // that blocks it) — the app still works, it just won't persist.
+    console.warn('Could not save match data:', e);
+  }
+}
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return false;
+    const saved = JSON.parse(raw);
+    if(saved && saved.teams){
+      state.currentSet = saved.currentSet || 1;
+      state.teams = saved.teams;
+      state.undoStack = saved.undoStack || [];
+      // Backfill timeouts/subs for data saved before this feature existed
+      if(!state.teams.home.timeouts) state.teams.home.timeouts = freshCourtTally();
+      if(!state.teams.home.subs) state.teams.home.subs = freshCourtTally();
+      return true;
+    }
+  }catch(e){
+    console.warn('Could not load saved match data:', e);
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------
+// MUTATIONS
+// ---------------------------------------------------------------
+function addPlayer(team){
+  const inputId = team === 'home' ? 'homeNewPlayerInput' : 'awayNewPlayerInput';
+  const input = document.getElementById(inputId);
+  const label = input.value.trim().toUpperCase();
+  if(!label) return;
+  state.teams[team].players.push({ id: uid(), label, passes: [] });
+  input.value = '';
+  renderRoster(team);
+  renderStatsTables();
+  renderLogs();
+  saveState();
+}
+
+function removePlayer(team, id){
+  state.teams[team].players = state.teams[team].players.filter(p => p.id !== id);
+  state.undoStack = state.undoStack.filter(a => !(a.team===team && a.playerId===id));
+  renderRoster(team);
+  renderStatsTables();
+  renderLogs();
+  updateUndoButton();
+  saveState();
+}
+
+function addPass(team, playerId, value){
+  const player = findPlayer(team, playerId);
+  if(!player) return;
+  player.passes.push({ set: state.currentSet, value, ts: Date.now() });
+  state.undoStack.push({ team, playerId });
+  renderRoster(team);
+  renderStatsTables();
+  renderLogs();
+  updateUndoButton();
+  const t = document.getElementById('lastActionToast');
+  t.innerHTML = `Last: <b>${player.label}</b> +${value} pt pass · Set ${state.currentSet}`;
+  saveState();
+}
+
+function undoLast(){
+  const last = state.undoStack.pop();
+  if(!last) return;
+  const player = findPlayer(last.team, last.playerId);
+  if(!player){ updateUndoButton(); return; }
+  const removed = player.passes.pop();
+  renderRoster(last.team);
+  renderStatsTables();
+  renderLogs();
+  updateUndoButton();
+  const t = document.getElementById('lastActionToast');
+  if(removed){
+    t.innerHTML = `Undid: <b>${player.label}</b> — ${removed.value} pt pass (Set ${removed.set})`;
+  }
+  saveState();
+}
+
+function updateUndoButton(){
+  document.getElementById('undoBtn').disabled = state.undoStack.length === 0;
+}
+
+function setCurrentSet(n){
+  state.currentSet = n;
+  document.querySelectorAll('#setPicker button').forEach(b=>{
+    b.classList.toggle('active', parseInt(b.dataset.set) === n);
+  });
+  document.getElementById('headerSetVal').textContent = 'SET ' + n;
+  renderCourtTracker();
+  saveState();
+}
+
+function updateAwayName(val){
+  state.teams.away.name = val;
+  document.getElementById('tab3NavLabel').textContent = awayDisplayName() + ' Passing';
+  document.getElementById('tab3Title').textContent = state.teams.away.name.trim()
+    ? awayDisplayName() + "'s Passing" : 'Opponent Passing';
+  saveState();
+}
+
+function resetMatch(){
+  if(!confirm('Start a new match? This clears all players, passes, timeouts, and subs.')) return;
+  state.currentSet = 1;
+  state.teams.home = { name:'Billikens', players: [], timeouts: freshCourtTally(), subs: freshCourtTally() };
+  state.teams.away = { name:'', players: [] };
+  state.undoStack = [];
+  document.getElementById('awayTeamNameInput').value = '';
+  updateAwayName('');
+  setCurrentSet(1);
+  renderRoster('home'); renderRoster('away');
+  renderStatsTables(); renderLogs(); updateUndoButton();
+  renderCourtTracker();
+  document.getElementById('lastActionToast').innerHTML = '';
+  saveState();
+}
+
+// ---------------------------------------------------------------
+// TIMEOUTS & SUBS (Billikens only, tracked per set)
+// ---------------------------------------------------------------
+function changeCourtTally(kind, delta){
+  const s = state.currentSet;
+  const limit = kind === 'timeouts' ? TIMEOUT_LIMIT : SUB_LIMIT;
+  const tally = state.teams.home[kind];
+  const next = (tally[s] || 0) + delta;
+  if(next < 0) return;
+  if(delta > 0 && next > limit) return;
+  tally[s] = next;
+  renderCourtTracker();
+  saveState();
+}
+
+function renderCourtTracker(){
+  const s = state.currentSet;
+  const timeouts = state.teams.home.timeouts[s] || 0;
+  const subs = state.teams.home.subs[s] || 0;
+
+  const toEl = document.getElementById('timeoutCount');
+  const subEl = document.getElementById('subCount');
+  if(!toEl || !subEl) return; // not rendered yet
+
+  toEl.textContent = `${timeouts} / ${TIMEOUT_LIMIT}`;
+  subEl.textContent = `${subs} / ${SUB_LIMIT}`;
+
+  document.getElementById('timeoutMinusBtn').disabled = timeouts <= 0;
+  document.getElementById('timeoutPlusBtn').disabled = timeouts >= TIMEOUT_LIMIT;
+  document.getElementById('subMinusBtn').disabled = subs <= 0;
+  document.getElementById('subPlusBtn').disabled = subs >= SUB_LIMIT;
+
+  document.getElementById('timeoutTracker').classList.toggle('at-limit', timeouts >= TIMEOUT_LIMIT);
+  document.getElementById('subTracker').classList.toggle('at-limit', subs >= SUB_LIMIT);
+  document.getElementById('subTracker').classList.toggle('near-limit', subs > 10 && subs < SUB_LIMIT);
+}
+
+// ---------------------------------------------------------------
+// STATS
+// ---------------------------------------------------------------
+function computeStats(player){
+  const bySet = {};
+  for(let s=1;s<=5;s++) bySet[s] = { att:0, pts:0, avg:null };
+  let totalAtt=0, totalPts=0;
+  player.passes.forEach(p=>{
+    bySet[p.set].att++; bySet[p.set].pts += p.value;
+    totalAtt++; totalPts += p.value;
+  });
+  for(let s=1;s<=5;s++){ if(bySet[s].att) bySet[s].avg = bySet[s].pts / bySet[s].att; }
+  return { bySet, total: { att: totalAtt, pts: totalPts, avg: totalAtt ? totalPts/totalAtt : null } };
+}
+
+function getSetsWithData(team){
+  const used = new Set();
+  state.teams[team].players.forEach(p => p.passes.forEach(pass => used.add(pass.set)));
+  if(used.size === 0) return [1];
+  return Array.from(used).sort((a,b)=>a-b);
+}
+
+function fmtAvg(v){ return v===null || v===undefined ? '—' : v.toFixed(2); }
+
+function isStrugglingPasser(player){
+  // Flags a player if 3 or more of their last 4 passes were a 0 or a 1.
+  if(player.passes.length < 4) return false;
+  const last4 = player.passes.slice(-4);
+  const lowCount = last4.filter(p => p.value === 0 || p.value === 1).length;
+  return lowCount >= 3;
+}
+
+// ---------------------------------------------------------------
+// RENDER: ROSTER (Tab 1)
+// ---------------------------------------------------------------
+function renderRoster(team){
+  const container = document.getElementById(team === 'home' ? 'homeRoster' : 'awayRoster');
   const players = state.teams[team].players;
+  if(players.length === 0){
+    container.innerHTML = `<div class="empty-note">No players added yet.</div>`;
+    return;
+  }
+  container.innerHTML = players.map(p => {
+    const stats = computeStats(p);
+    const struggling = isStrugglingPasser(p);
+    return `
+      <div class="player-row${struggling ? ' struggling' : ''}">
+        <div class="player-tag">${escapeHtml(p.label)}</div>
+        ${struggling ? `<span class="warn-triangle" title="3+ of last 4 passes were 0 or 1">⚠️</span>` : ''}
+        <div class="player-avg">
+          <div class="n tnum">${fmtAvg(stats.total.avg)}</div>
+          <div class="l">Avg</div>
+        </div>
+        <div class="pass-btns">
+          <button class="v0" onclick="addPass('${team}','${p.id}',0)">0</button>
+          <button class="v1" onclick="addPass('${team}','${p.id}',1)">1</button>
+          <button class="v2" onclick="addPass('${team}','${p.id}',2)">2</button>
+          <button class="v3" onclick="addPass('${team}','${p.id}',3)">3</button>
+        </div>
+        <button class="del-btn" onclick="removePlayer('${team}','${p.id}')" title="Remove player">×</button>
+      </div>
+    `;
+  }).join('');
+}
 
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(13);
-  doc.setTextColor(...SLU_BLUE_RGB);
-  doc.text(title + ' Passing — Attempt Log', marginX, y);
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
-  doc.setTextColor(20);
-  y += 18;
+// ---------------------------------------------------------------
+// RENDER: AVERAGES TABLES (Tab 2 / Tab 3, page 1)
+// ---------------------------------------------------------------
+function renderStatsTables(){
+  renderAvgTable('home', 'tab2-avg');
+  renderAvgTable('away', 'tab3-avg');
+}
+
+function renderAvgTable(team, containerId){
+  const container = document.getElementById(containerId);
+  const players = state.teams[team].players;
+  const setsUsed = getSetsWithData(team);
 
   if(players.length === 0){
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(10);
+    container.innerHTML = `<div class="empty-state">Add players on Live Entry to see stats here.</div>`;
+    return;
+  }
+
+  let html = `<div class="table-wrap"><table class="stats"><thead><tr><th>Player</th>`;
+  setsUsed.forEach(s => html += `<th>Set ${s}</th>`);
+  html += `<th>Total</th></tr></thead><tbody>`;
+
+  // per-player rows
+  const teamTotals = {};
+  setsUsed.forEach(s => teamTotals[s] = { att:0, pts:0 });
+  let teamAllAtt = 0, teamAllPts = 0;
+
+  players.forEach(p => {
+    const stats = computeStats(p);
+    html += `<tr><td>${escapeHtml(p.label)}</td>`;
+    setsUsed.forEach(s => {
+      const c = stats.bySet[s];
+      teamTotals[s].att += c.att; teamTotals[s].pts += c.pts;
+      html += `<td><span class="avg tnum">${fmtAvg(c.avg)}</span><span class="meta">${c.att} att · ${c.pts} pts</span></td>`;
+    });
+    teamAllAtt += stats.total.att; teamAllPts += stats.total.pts;
+    html += `<td class="total-cell"><span class="avg tnum">${fmtAvg(stats.total.avg)}</span><span class="meta">${stats.total.att} att · ${stats.total.pts} pts</span></td></tr>`;
+  });
+
+  // team total row
+  html += `<tr class="team-row"><td>TEAM</td>`;
+  setsUsed.forEach(s => {
+    const t = teamTotals[s];
+    const avg = t.att ? t.pts/t.att : null;
+    html += `<td><span class="avg tnum">${fmtAvg(avg)}</span><span class="meta">${t.att} att · ${t.pts} pts</span></td>`;
+  });
+  const teamAvg = teamAllAtt ? teamAllPts/teamAllAtt : null;
+  html += `<td class="total-cell"><span class="avg tnum">${fmtAvg(teamAvg)}</span><span class="meta">${teamAllAtt} att · ${teamAllPts} pts</span></td></tr>`;
+
+  html += `</tbody></table></div>`;
+  container.innerHTML = html;
+}
+
+// ---------------------------------------------------------------
+// RENDER: LOG PAGES (Tab 2 / Tab 3, page 2)
+// ---------------------------------------------------------------
+function getAllPassesChronological(team){
+  const entries = [];
+  state.teams[team].players.forEach(p => {
+    p.passes.forEach(pass => entries.push({ player: p, pass }));
+  });
+  entries.sort((a,b) => a.pass.ts - b.pass.ts);
+  return entries;
+}
+
+function renderLogs(){
+  renderLog('home', 'tab2-log');
+  renderLog('away', 'tab3-log');
+}
+
+function renderLog(team, containerId){
+  const container = document.getElementById(containerId);
+  const players = state.teams[team].players;
+
+  if(players.length === 0){
+    container.innerHTML = `<div class="empty-state">Add players on Live Entry to see the attempt log here.</div>`;
+    return;
+  }
+
+  let html = `<div class="legend">`;
+  for(let s=1;s<=5;s++){
+    html += `<span><i style="background:${SET_COLORS[s]}"></i>Set ${s}</span>`;
+  }
+  html += `</div>`;
+
+  // Per-player breakdown
+  html += `<h3 class="log-section-heading">By Player</h3>`;
+  players.forEach(p => {
+    html += `<div class="log-player"><h3>${escapeHtml(p.label)} <span style="color:var(--placeholder);font-weight:600;">(${p.passes.length} attempts)</span></h3>`;
+    if(p.passes.length === 0){
+      html += `<div class="empty-note" style="padding:0;">No passes recorded yet.</div>`;
+    } else {
+      html += `<div class="chip-row">`;
+      p.passes.forEach(pass => {
+        html += `<div class="chip" style="background:${SET_COLORS[pass.set]}" title="Set ${pass.set}">${pass.value}</div>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+  });
+
+  // Full team log — every attempt from every player, in the order it happened
+  html += `<h3 class="log-section-heading">Full Team Log</h3>`;
+  const entries = getAllPassesChronological(team);
+  if(entries.length === 0){
+    html += `<div class="empty-note" style="padding:0 0 14px;">No passes recorded yet.</div>`;
+  } else {
+    html += `<div class="table-wrap"><table class="team-log-table"><thead><tr><th>#</th><th>Player</th><th>Set</th><th>Value</th></tr></thead><tbody>`;
+    entries.forEach((e, i) => {
+      html += `<tr>
+        <td class="tl-idx">${i+1}</td>
+        <td class="tl-player">${escapeHtml(e.player.label)}</td>
+        <td><span class="set-tag" style="background:${SET_COLORS[e.pass.set]}">Set ${e.pass.set}</span></td>
+        <td><span class="chip" style="background:${SET_COLORS[e.pass.set]};display:inline-flex;">${e.pass.value}</span></td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+// ---------------------------------------------------------------
+// TAB / PAGE NAVIGATION
+// ---------------------------------------------------------------
+function switchTab(tabId){
+  document.querySelectorAll('.tabpanel').forEach(el => el.classList.toggle('active', el.id === tabId));
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+}
+
+function switchPage(tabId, page){
+  const avgId = tabId + '-avg', logId = tabId + '-log';
+  document.getElementById(avgId).classList.toggle('active', page === 'avg');
+  document.getElementById(logId).classList.toggle('active', page === 'log');
+  const nav = document.getElementById(avgId).parentElement.querySelector('.subnav');
+  nav.querySelectorAll('.subnav-btn').forEach((b,i) => b.classList.toggle('active', (i===0 && page==='avg') || (i===1 && page==='log')));
+}
+
+// ---------------------------------------------------------------
+// PDF EXPORT
+// ---------------------------------------------------------------
+function exportPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const marginX = 40;
+  let y = 50;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(18);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text('Billikens Passing Report', marginX, y);
+  doc.setTextColor(20);
+  y += 18;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, marginX, y);
+  doc.text(`Current set: ${state.currentSet}`, 430, y);
+  y += 22;
+  doc.setTextColor(20);
+
+  // Page 1: match averages for both teams
+  y = drawTeamSection(doc, 'home', 'Billikens', y);
+  y += 26;
+  if(y > 660){ doc.addPage(); y = 50; }
+  y = drawTeamSection(doc, 'away', awayDisplayName(), y);
+
+  // Page 2+: per-player attempt log breakdown for both teams
+  doc.addPage();
+  y = 50;
+  doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text('Attempt Logs by Player', marginX, y);
+  doc.setTextColor(20);
+  y += 16;
+  y = drawSetLegend(doc, marginX, y);
+  y += 14;
+
+  y = drawTeamLog(doc, 'home', 'Billikens', y);
+  y += 20;
+  if(y > 660){ doc.addPage(); y = 50; }
+  y = drawTeamLog(doc, 'away', awayDisplayName(), y);
+
+  // Page 3+: full team log (chronological, all players merged) for both teams
+  doc.addPage();
+  y = 50;
+  doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text('Full Team Log', marginX, y);
+  doc.setTextColor(20);
+  y += 16;
+  y = drawSetLegend(doc, marginX, y);
+  y += 14;
+
+  y = drawFullTeamLog(doc, 'home', 'Billikens', y);
+  y += 20;
+  if(y > 660){ doc.addPage(); y = 50; }
+  y = drawFullTeamLog(doc, 'away', awayDisplayName(), y);
+
+  const filename = 'billikens-passing-report-' + new Date().toISOString().slice(0,10) + '.pdf';
+  openOrDownloadPdf(doc, filename);
+}
+
+function drawFullTeamLog(doc, team, title, y){
+  const marginX = 40;
+  const entries = getAllPassesChronological(team);
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text(title + ' Passing — Full Team Log', marginX, y);
+  doc.setTextColor(20);
+  y += 16;
+
+  if(entries.length === 0){
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('No passes recorded.', marginX, y);
+    return y + 14;
+  }
+
+  const colWidths = [26, 80, 55, 45];
+  const headers = ['#', 'Player', 'Set', 'Value'];
+
+  doc.setFontSize(9); doc.setFont('helvetica','bold');
+  let x = marginX;
+  headers.forEach((h,i) => { doc.text(h, x, y); x += colWidths[i]; });
+  y += 5;
+  doc.setDrawColor(180); doc.setLineWidth(0.7);
+  doc.line(marginX, y, x, y);
+  y += 13;
+
+  doc.setFont('helvetica','normal');
+  entries.forEach((e, i) => {
+    if(y > 760){ doc.addPage(); y = 50; }
+    let x = marginX;
+    doc.setFontSize(9); doc.setTextColor(20);
+    doc.text(String(i + 1), x, y); x += colWidths[0];
+    doc.text(e.player.label, x, y); x += colWidths[1];
+    doc.text('Set ' + e.pass.set, x, y); x += colWidths[2];
+
+    doc.setFillColor(...SET_RGB[e.pass.set]);
+    doc.roundedRect(x, y - 9, 17, 12, 2, 2, 'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(255,255,255);
+    doc.text(String(e.pass.value), x + 8.5, y - 1, { align: 'center' });
+    doc.setFont('helvetica','normal'); doc.setTextColor(20);
+
+    y += 14;
+  });
+
+  return y + 6;
+}
+
+function drawSetLegend(doc, marginX, y){
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  let x = marginX;
+  for(let s=1; s<=5; s++){
+    doc.setFillColor(...SET_RGB[s]);
+    doc.roundedRect(x, y - 8, 9, 9, 1.5, 1.5, 'F');
+    doc.setTextColor(80);
+    doc.text('Set ' + s, x + 13, y);
+    x += 55;
+  }
+  doc.setTextColor(20);
+  return y;
+}
+
+function openOrDownloadPdf(doc, filename){
+  // Sandboxed previews (like the in-chat viewer) can block a forced file
+  // download, so open the PDF in a new tab instead — from there it can be
+  // saved via the browser's Share / Save menu. This also works normally
+  // once the file is opened directly in Safari.
+  const blob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(blob);
+  const fallback = document.getElementById('pdfFallbackLink');
+
+  let opened = null;
+  try{
+    opened = window.open(blobUrl, '_blank');
+  }catch(e){
+    opened = null;
+  }
+
+  if(!opened || opened.closed){
+    // Popup was blocked — show a manual link the user can tap themselves.
+    fallback.href = blobUrl;
+    fallback.download = filename;
+    fallback.textContent = '📄 Tap here to open your PDF';
+    fallback.style.display = 'inline-block';
+  } else {
+    fallback.style.display = 'none';
+  }
+}
+
+function drawTeamSection(doc, team, title, y){
+  const marginX = 40;
+  const players = state.teams[team].players;
+  const setsUsed = getSetsWithData(team);
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text(title + ' Passing', marginX, y);
+  doc.setTextColor(20);
+  y += 16;
+
+  if(players.length === 0){
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
     doc.text('No players recorded.', marginX, y);
     return y + 14;
   }
 
-  let rowY = y;
-  let leftBlockHeight = 0;
+  const colWidths = [90, ...setsUsed.map(()=>72), 90];
+  const headers = ['Player', ...setsUsed.map(s => 'Set ' + s), 'Total'];
 
-  for(let i = 0; i < players.length; i += 2){
+  doc.setFontSize(9); doc.setFont('helvetica','bold');
+  let x = marginX;
+  headers.forEach((h,i) => { doc.text(h, x, y); x += colWidths[i]; });
+  y += 5;
+  doc.setDrawColor(180); doc.setLineWidth(0.7);
+  doc.line(marginX, y, x, y);
+  y += 13;
 
-    const pair = [players[i], players[i + 1]].filter(Boolean);
+  doc.setFont('helvetica','normal');
+  const teamTotals = {}; setsUsed.forEach(s => teamTotals[s] = {att:0,pts:0});
+  let teamAllAtt=0, teamAllPts=0;
 
-    let tallestBlock = 0;
-
-    pair.forEach((p, columnIndex) => {
-
-      const startX = columnIndex === 0 ? leftX : rightX;
-
-      if(rowY > 700){
-        doc.addPage();
-        rowY = 50;
-      }
-
-      doc.setFont('helvetica','bold');
-      doc.setFontSize(10.5);
-      doc.setTextColor(20);
-      doc.text(p.label, startX, rowY);
-
-      doc.setFont('helvetica','normal');
-      doc.setFontSize(9);
-      doc.setTextColor(110);
-      doc.text(
-        `${p.passes.length} attempt${p.passes.length === 1 ? '' : 's'}`,
-        startX + 34,
-        rowY
-      );
-
-      doc.setTextColor(20);
-
-      if(p.passes.length === 0){
-        tallestBlock = Math.max(tallestBlock, 34);
-
-        doc.setFont('helvetica','normal');
-        doc.setFontSize(8);
-        doc.setTextColor(130);
-        doc.text('No passes recorded.', startX, rowY + 16);
-
-        doc.setTextColor(20);
-        return;
-      }
-
-      let chipX = startX;
-      let chipY = rowY + 20;
-
-      p.passes.forEach(pass => {
-
-        if(chipX + chip > startX + columnWidth){
-          chipX = startX;
-          chipY += chip + chipGap;
-        }
-
-        doc.setFillColor(...SET_RGB[pass.set]);
-        doc.roundedRect(
-          chipX,
-          chipY - chip,
-          chip,
-          chip,
-          2.5,
-          2.5,
-          'F'
-        );
-
-        doc.setFont('helvetica','bold');
-        doc.setFontSize(9);
-        doc.setTextColor(255,255,255);
-
-        doc.text(
-          String(pass.value),
-          chipX + chip / 2,
-          chipY - chip / 2 + 3,
-          { align:'center' }
-        );
-
-        chipX += chip + chipGap;
-      });
-
-      const blockHeight = (chipY - rowY) + 20;
-      tallestBlock = Math.max(tallestBlock, blockHeight);
-
+  players.forEach(p => {
+    const stats = computeStats(p);
+    let x = marginX;
+    doc.text(p.label, x, y); x += colWidths[0];
+    setsUsed.forEach((s,i) => {
+      const c = stats.bySet[s];
+      teamTotals[s].att += c.att; teamTotals[s].pts += c.pts;
+      const txt = c.att ? `${c.avg.toFixed(2)} (${c.att}/${c.pts})` : '-';
+      doc.text(txt, x, y); x += colWidths[i+1];
     });
+    teamAllAtt += stats.total.att; teamAllPts += stats.total.pts;
+    const totTxt = stats.total.att ? `${stats.total.avg.toFixed(2)} (${stats.total.att}/${stats.total.pts})` : '-';
+    doc.text(totTxt, x, y);
+    y += 15;
+    if(y > 760){ doc.addPage(); y = 50; }
+  });
 
-    rowY += tallestBlock + 12;
+  doc.setFont('helvetica','bold');
+  let xTeam = marginX;
+  doc.text('TEAM', xTeam, y); xTeam += colWidths[0];
+  setsUsed.forEach((s,i) => {
+    const t = teamTotals[s];
+    const avg = t.att ? t.pts/t.att : null;
+    const txt = t.att ? `${avg.toFixed(2)} (${t.att}/${t.pts})` : '-';
+    doc.text(txt, xTeam, y); xTeam += colWidths[i+1];
+  });
+  const teamAvg = teamAllAtt ? teamAllPts/teamAllAtt : null;
+  const teamTxt = teamAllAtt ? `${teamAvg.toFixed(2)} (${teamAllAtt}/${teamAllPts})` : '-';
+  doc.text(teamTxt, xTeam, y);
+  y += 14;
+
+  return y;
+}
+
+function drawTeamLog(doc, team, title, y){
+  const marginX = 40;
+  const pageRightEdge = 572; // letter width (612pt) minus right margin
+  const chip = 15;      // chip width/height
+  const chipGap = 4;    // gap between chips
+  const rowGap = 12;    // gap between a player's chip row and the next player
+  const players = state.teams[team].players;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.setTextColor(...SLU_BLUE_RGB);
+  doc.text(title + ' Passing — Attempt Log', marginX, y);
+  doc.setTextColor(20);
+  y += 18;
+
+  if(players.length === 0){
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+    doc.text('No players recorded.', marginX, y);
+    return y + 14;
   }
 
-  return rowY;
+  players.forEach(p => {
+    if(y > 730){ doc.addPage(); y = 50; }
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(20);
+    doc.text(`${p.label}`, marginX, y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110);
+    doc.text(`${p.passes.length} attempt${p.passes.length === 1 ? '' : 's'}`, marginX + 34, y);
+    doc.setTextColor(20);
+    y += 6;
+
+    if(p.passes.length === 0){
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(140);
+      doc.text('No passes recorded.', marginX, y + 12);
+      doc.setTextColor(20);
+      y += rowGap + 14;
+      return;
+    }
+
+    y += 14; // room for first chip row
+    let x = marginX;
+
+    p.passes.forEach(pass => {
+      if(x + chip > pageRightEdge){ x = marginX; y += chip + chipGap; }
+      if(y > 760){ doc.addPage(); y = 50; x = marginX; }
+
+      doc.setFillColor(...SET_RGB[pass.set]);
+      doc.roundedRect(x, y - chip, chip, chip, 2.5, 2.5, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
+      doc.text(String(pass.value), x + chip/2, y - chip/2 + 3, { align: 'center' });
+      doc.setTextColor(20);
+
+      x += chip + chipGap;
+    });
+
+    y += rowGap + 4;
+  });
+
+  return y;
 }
+
+// ---------------------------------------------------------------
+// INIT
+// ---------------------------------------------------------------
+function initSetPicker(){
+  const picker = document.getElementById('setPicker');
+  picker.innerHTML = '';
+  for(let s=1;s<=5;s++){
+    const btn = document.createElement('button');
+    btn.textContent = 'Set ' + s;
+    btn.dataset.set = s;
+    if(s === state.currentSet) btn.classList.add('active');
+    btn.onclick = () => setCurrentSet(s);
+    picker.appendChild(btn);
+  }
+  document.getElementById('headerSetVal').textContent = 'SET ' + state.currentSet;
+}
+
+const hadSavedData = loadState();
+applyTheme(currentTheme());
+initSetPicker();
+document.getElementById('awayTeamNameInput').value = state.teams.away.name;
+updateAwayName(state.teams.away.name);
+renderRoster('home');
+renderRoster('away');
+renderStatsTables();
+renderLogs();
+updateUndoButton();
+renderCourtTracker();
+if(hadSavedData){
+  document.getElementById('lastActionToast').innerHTML = 'Restored your saved match data from this device.';
+}
+</script>
+</body>
+</html>
