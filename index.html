@@ -342,7 +342,7 @@
       <div class="roster-card" data-team="home">
         <h2>Billikens</h2>
         <div class="add-player-form">
-          <input id="homeNewPlayerInput" placeholder="Initials (e.g. JS)" maxlength="4">
+          <input id="homeNewPlayerInput" placeholder="Initials (e.g. JS)" maxlength="4" onkeydown="if(event.key==='Enter'){ event.preventDefault(); addPlayer('home'); }">
           <button onclick="addPlayer('home')">Add Player</button>
         </div>
         <div id="homeRoster" class="roster-list"></div>
@@ -351,7 +351,7 @@
       <div class="roster-card" data-team="away">
         <h2><input id="awayTeamNameInput" placeholder="Opponent team name" oninput="updateAwayName(this.value)"></h2>
         <div class="add-player-form">
-          <input id="awayNewPlayerInput" placeholder="Jersey #" maxlength="3">
+          <input id="awayNewPlayerInput" placeholder="Jersey #" maxlength="3" onkeydown="if(event.key==='Enter'){ event.preventDefault(); addPlayer('away'); }">
           <button onclick="addPlayer('away')">Add Player</button>
         </div>
         <div id="awayRoster" class="roster-list"></div>
