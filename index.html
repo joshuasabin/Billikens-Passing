@@ -214,6 +214,19 @@
   @media (prefers-reduced-motion: reduce){
     .warn-triangle{animation:none;}
   }
+
+  /* ---------- Tap-confirm "pop" animation (pass buttons, undo, +/-) ---------- */
+  @keyframes btn-pop{
+    0%{transform:scale(1);}
+    40%{transform:scale(0.80);}
+    70%{transform:scale(1.14);}
+    100%{transform:scale(1);}
+  }
+  .btn-pop{animation:btn-pop 0.32s cubic-bezier(.34,1.56,.64,1);}
+  @media (prefers-reduced-motion: reduce){
+    .btn-pop{animation:none;}
+  }
+
   .player-tag{
     font-weight:800;font-size:14px;color:var(--heading);min-width:38px;text-align:center;
     background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 4px;flex-shrink:0;
@@ -518,6 +531,15 @@ function removePlayer(team, id){
   saveState();
 }
 
+// Re-triggers the tap-confirm "pop" animation on an element, even if it was
+// just added a moment ago (e.g. a button re-created by a full roster re-render).
+function popButton(el){
+  if(!el) return;
+  el.classList.remove('btn-pop');
+  void el.offsetWidth; // force reflow so the animation restarts cleanly
+  el.classList.add('btn-pop');
+}
+
 function addPass(team, playerId, value){
   const player = findPlayer(team, playerId);
   if(!player) return;
@@ -530,6 +552,7 @@ function addPass(team, playerId, value){
   const t = document.getElementById('lastActionToast');
   t.innerHTML = `Last: <b>${player.label}</b> +${value} pt pass · Set ${state.currentSet}`;
   saveState();
+  popButton(document.querySelector(`button[data-player="${playerId}"][data-value="${value}"]`));
 }
 
 function undoLast(){
@@ -542,6 +565,7 @@ function undoLast(){
   renderStatsTables();
   renderLogs();
   updateUndoButton();
+  popButton(document.getElementById('undoBtn'));
   const t = document.getElementById('lastActionToast');
   if(removed){
     t.innerHTML = `Undid: <b>${player.label}</b> — ${removed.value} pt pass (Set ${removed.set})`;
@@ -600,6 +624,11 @@ function changeCourtTally(kind, delta){
   tally[s] = next;
   renderCourtTracker();
   saveState();
+
+  const btnId = kind === 'timeouts'
+    ? (delta > 0 ? 'timeoutPlusBtn' : 'timeoutMinusBtn')
+    : (delta > 0 ? 'subPlusBtn' : 'subMinusBtn');
+  popButton(document.getElementById(btnId));
 }
 
 function renderCourtTracker(){
@@ -697,10 +726,10 @@ function renderRoster(team){
           <div class="l">Avg</div>
         </div>
         <div class="pass-btns">
-          <button class="v0" onclick="addPass('${team}','${p.id}',0)">0</button>
-          <button class="v1" onclick="addPass('${team}','${p.id}',1)">1</button>
-          <button class="v2" onclick="addPass('${team}','${p.id}',2)">2</button>
-          <button class="v3" onclick="addPass('${team}','${p.id}',3)">3</button>
+          <button class="v0" data-player="${p.id}" data-value="0" onclick="addPass('${team}','${p.id}',0)">0</button>
+          <button class="v1" data-player="${p.id}" data-value="1" onclick="addPass('${team}','${p.id}',1)">1</button>
+          <button class="v2" data-player="${p.id}" data-value="2" onclick="addPass('${team}','${p.id}',2)">2</button>
+          <button class="v3" data-player="${p.id}" data-value="3" onclick="addPass('${team}','${p.id}',3)">3</button>
         </div>
         <button class="del-btn" onclick="removePlayer('${team}','${p.id}')" title="Remove player">×</button>
       </div>
