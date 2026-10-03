@@ -231,7 +231,7 @@
     font-weight:800;font-size:14px;color:var(--heading);min-width:38px;text-align:center;
     background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 4px;flex-shrink:0;
   }
-  .player-avg{min-width:64px;text-align:center;flex-shrink:0;}
+  .player-avg{min-width:78px;text-align:center;flex-shrink:0;}
   .player-avg .n{font-weight:800;font-size:15px;}
   .player-avg .l{font-size:9px;color:var(--ink-soft);letter-spacing:0.06em;text-transform:uppercase;}
 
@@ -658,14 +658,15 @@ function renderCourtTracker(){
 // ---------------------------------------------------------------
 function computeStats(player){
   const bySet = {};
-  for(let s=1;s<=5;s++) bySet[s] = { att:0, pts:0, avg:null };
-  let totalAtt=0, totalPts=0;
+  for(let s=1;s<=5;s++) bySet[s] = { att:0, pts:0, good:0, avg:null };
+  let totalAtt=0, totalPts=0, totalGood=0;
   player.passes.forEach(p=>{
     bySet[p.set].att++; bySet[p.set].pts += p.value;
+    if(p.value >= 2){ bySet[p.set].good++; totalGood++; }
     totalAtt++; totalPts += p.value;
   });
   for(let s=1;s<=5;s++){ if(bySet[s].att) bySet[s].avg = bySet[s].pts / bySet[s].att; }
-  return { bySet, total: { att: totalAtt, pts: totalPts, avg: totalAtt ? totalPts/totalAtt : null } };
+  return { bySet, total: { att: totalAtt, pts: totalPts, good: totalGood, avg: totalAtt ? totalPts/totalAtt : null } };
 }
 
 function getSetsWithData(team){
@@ -674,6 +675,8 @@ function getSetsWithData(team){
   if(used.size === 0) return [1];
   return Array.from(used).sort((a,b)=>a-b);
 }
+
+function fmtGood(good, att){ return att ? Math.round(good/att*100) + '%' : '—'; }
 
 function fmtAvg(v){ return v===null || v===undefined ? '—' : v.toFixed(2); }
 
@@ -723,7 +726,7 @@ function renderRoster(team){
         ${struggling ? `<span class="warn-triangle" title="3+ of last 4 passes were 0 or 1">⚠️</span>` : ''}
         <div class="player-avg">
           <div class="n tnum">${fmtAvg(stats.total.avg)}</div>
-          <div class="l">Avg</div>
+          <div class="l">Avg · ${fmtGood(stats.total.good, stats.total.att)} good</div>
         </div>
         <div class="pass-btns">
           <button class="v0" data-player="${p.id}" data-value="0" onclick="addPass('${team}','${p.id}',0)">0</button>
@@ -751,7 +754,7 @@ function renderStatsTables(){
 
 function renderAvgTable(team, containerId){
   const container = document.getElementById(containerId);
-  const players = state.teams[team].players;
+  const players = sortedRosterForDisplay(team);
   const setsUsed = getSetsWithData(team);
 
   if(players.length === 0){
@@ -765,19 +768,19 @@ function renderAvgTable(team, containerId){
 
   // per-player rows
   const teamTotals = {};
-  setsUsed.forEach(s => teamTotals[s] = { att:0, pts:0 });
-  let teamAllAtt = 0, teamAllPts = 0;
+  setsUsed.forEach(s => teamTotals[s] = { att:0, pts:0, good:0 });
+  let teamAllAtt = 0, teamAllPts = 0, teamAllGood = 0;
 
   players.forEach(p => {
     const stats = computeStats(p);
     html += `<tr><td>${escapeHtml(p.label)}</td>`;
     setsUsed.forEach(s => {
       const c = stats.bySet[s];
-      teamTotals[s].att += c.att; teamTotals[s].pts += c.pts;
-      html += `<td><span class="avg tnum">${fmtAvg(c.avg)}</span><span class="meta">${c.att} att · ${c.pts} pts</span></td>`;
+      teamTotals[s].att += c.att; teamTotals[s].pts += c.pts; teamTotals[s].good += c.good;
+      html += `<td><span class="avg tnum">${fmtAvg(c.avg)}</span><span class="meta">${c.att} att · ${c.pts} pts · ${fmtGood(c.good, c.att)} good</span></td>`;
     });
-    teamAllAtt += stats.total.att; teamAllPts += stats.total.pts;
-    html += `<td class="total-cell"><span class="avg tnum">${fmtAvg(stats.total.avg)}</span><span class="meta">${stats.total.att} att · ${stats.total.pts} pts</span></td></tr>`;
+    teamAllAtt += stats.total.att; teamAllPts += stats.total.pts; teamAllGood += stats.total.good;
+    html += `<td class="total-cell"><span class="avg tnum">${fmtAvg(stats.total.avg)}</span><span class="meta">${stats.total.att} att · ${stats.total.pts} pts · ${fmtGood(stats.total.good, stats.total.att)} good</span></td></tr>`;
   });
 
   // team total row
@@ -785,10 +788,10 @@ function renderAvgTable(team, containerId){
   setsUsed.forEach(s => {
     const t = teamTotals[s];
     const avg = t.att ? t.pts/t.att : null;
-    html += `<td><span class="avg tnum">${fmtAvg(avg)}</span><span class="meta">${t.att} att · ${t.pts} pts</span></td>`;
+    html += `<td><span class="avg tnum">${fmtAvg(avg)}</span><span class="meta">${t.att} att · ${t.pts} pts · ${fmtGood(t.good, t.att)} good</span></td>`;
   });
   const teamAvg = teamAllAtt ? teamAllPts/teamAllAtt : null;
-  html += `<td class="total-cell"><span class="avg tnum">${fmtAvg(teamAvg)}</span><span class="meta">${teamAllAtt} att · ${teamAllPts} pts</span></td></tr>`;
+  html += `<td class="total-cell"><span class="avg tnum">${fmtAvg(teamAvg)}</span><span class="meta">${teamAllAtt} att · ${teamAllPts} pts · ${fmtGood(teamAllGood, teamAllAtt)} good</span></td></tr>`;
 
   html += `</tbody></table></div>`;
   container.innerHTML = html;
@@ -1037,7 +1040,18 @@ function drawSetLegend(doc, marginX, y){
   return y;
 }
 
-function openOrDownloadPdf(doc, filename){
+async function openOrDownloadPdf(doc, filename){
+  // Published artifact pages block direct downloads; use the downloads capability when present.
+  try{
+    if(window.claude && window.claude.use){
+      const dl = await window.claude.use('downloads');
+      if(dl){
+        try{ await dl.save({ filename, data: doc.output('blob') }); }
+        catch(e){ if(!e || e.code !== 'declined') console.warn('PDF save failed:', e); }
+        return;
+      }
+    }
+  }catch(e){ /* fall through to the standard behavior */ }
   // Sandboxed previews (like the in-chat viewer) can block a forced file
   // download, so open the PDF in a new tab instead — from there it can be
   // saved via the browser's Share / Save menu. This also works normally
@@ -1066,7 +1080,7 @@ function openOrDownloadPdf(doc, filename){
 
 function drawTeamSection(doc, team, title, y){
   const marginX = 40;
-  const players = state.teams[team].players;
+  const players = sortedRosterForDisplay(team);
   const setsUsed = getSetsWithData(team);
 
   doc.setFont('helvetica','bold'); doc.setFontSize(13);
@@ -1081,7 +1095,8 @@ function drawTeamSection(doc, team, title, y){
     return y + 14;
   }
 
-  const colWidths = [90, ...setsUsed.map(()=>72), 90];
+  const setColW = Math.min(100, Math.floor((532 - 60 - 100) / setsUsed.length));
+  const colWidths = [60, ...setsUsed.map(()=>setColW), 100];
   const headers = ['Player', ...setsUsed.map(s => 'Set ' + s), 'Total'];
 
   doc.setFontSize(9); doc.setFont('helvetica','bold');
@@ -1093,8 +1108,8 @@ function drawTeamSection(doc, team, title, y){
   y += 13;
 
   doc.setFont('helvetica','normal');
-  const teamTotals = {}; setsUsed.forEach(s => teamTotals[s] = {att:0,pts:0});
-  let teamAllAtt=0, teamAllPts=0;
+  const teamTotals = {}; setsUsed.forEach(s => teamTotals[s] = {att:0,pts:0,good:0});
+  let teamAllAtt=0, teamAllPts=0, teamAllGood=0;
 
   players.forEach(p => {
     const stats = computeStats(p);
@@ -1102,12 +1117,12 @@ function drawTeamSection(doc, team, title, y){
     doc.text(p.label, x, y); x += colWidths[0];
     setsUsed.forEach((s,i) => {
       const c = stats.bySet[s];
-      teamTotals[s].att += c.att; teamTotals[s].pts += c.pts;
-      const txt = c.att ? `${c.avg.toFixed(2)} (${c.att}/${c.pts})` : '-';
+      teamTotals[s].att += c.att; teamTotals[s].pts += c.pts; teamTotals[s].good += c.good;
+      const txt = c.att ? `${c.avg.toFixed(2)} (${c.att}/${c.pts}) ${fmtGood(c.good,c.att)}` : '-';
       doc.text(txt, x, y); x += colWidths[i+1];
     });
-    teamAllAtt += stats.total.att; teamAllPts += stats.total.pts;
-    const totTxt = stats.total.att ? `${stats.total.avg.toFixed(2)} (${stats.total.att}/${stats.total.pts})` : '-';
+    teamAllAtt += stats.total.att; teamAllPts += stats.total.pts; teamAllGood += stats.total.good;
+    const totTxt = stats.total.att ? `${stats.total.avg.toFixed(2)} (${stats.total.att}/${stats.total.pts}) ${fmtGood(stats.total.good,stats.total.att)}` : '-';
     doc.text(totTxt, x, y);
     y += 15;
     if(y > 760){ doc.addPage(); y = 50; }
@@ -1119,11 +1134,11 @@ function drawTeamSection(doc, team, title, y){
   setsUsed.forEach((s,i) => {
     const t = teamTotals[s];
     const avg = t.att ? t.pts/t.att : null;
-    const txt = t.att ? `${avg.toFixed(2)} (${t.att}/${t.pts})` : '-';
+    const txt = t.att ? `${avg.toFixed(2)} (${t.att}/${t.pts}) ${fmtGood(t.good,t.att)}` : '-';
     doc.text(txt, xTeam, y); xTeam += colWidths[i+1];
   });
   const teamAvg = teamAllAtt ? teamAllPts/teamAllAtt : null;
-  const teamTxt = teamAllAtt ? `${teamAvg.toFixed(2)} (${teamAllAtt}/${teamAllPts})` : '-';
+  const teamTxt = teamAllAtt ? `${teamAvg.toFixed(2)} (${teamAllAtt}/${teamAllPts}) ${fmtGood(teamAllGood,teamAllAtt)}` : '-';
   doc.text(teamTxt, xTeam, y);
   y += 14;
 
